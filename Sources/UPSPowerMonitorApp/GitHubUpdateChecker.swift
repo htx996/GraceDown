@@ -1,15 +1,8 @@
 import Foundation
 
-struct GitHubRelease: Decodable, Sendable {
+struct GitHubLatestRelease: Sendable {
     let tagName: String
-    let name: String?
     let htmlURL: URL
-
-    enum CodingKeys: String, CodingKey {
-        case tagName = "tag_name"
-        case name
-        case htmlURL = "html_url"
-    }
 }
 
 enum UpdateCheckResult: Sendable {
@@ -20,15 +13,12 @@ enum UpdateCheckResult: Sendable {
 
 enum GitHubUpdateCheckerError: LocalizedError {
     case invalidResponse
-    case rateLimited
     case requestFailed(Int)
 
     var errorDescription: String? {
         switch self {
         case .invalidResponse:
             "GitHub 返回的数据无效"
-        case .rateLimited:
-            "GitHub 请求次数暂时受限，请稍后再试"
         case .requestFailed(let statusCode):
             "GitHub 检查更新失败，HTTP \(statusCode)"
         }
@@ -57,25 +47,34 @@ struct GitHubUpdateChecker {
         return .upToDate(currentVersion: currentVersion, latestVersion: latestVersion)
     }
 
-    private func latestRelease() async throws -> GitHubRelease? {
-        let url = URL(string: "https://api.github.com/repos/\(owner)/\(repository)/releases/latest")!
+    private func latestRelease() async throws -> GitHubLatestRelease? {
+        let url = URL(string: "https://github.com/\(owner)/\(repository)/releases/latest")!
         var request = URLRequest(url: url)
         request.timeoutInterval = 8
-        request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
         request.setValue("GraceDown", forHTTPHeaderField: "User-Agent")
 
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (_, response) = try await URLSession.shared.data(for: request)
         guard let httpResponse = response as? HTTPURLResponse else {
             throw GitHubUpdateCheckerError.invalidResponse
         }
 
         switch httpResponse.statusCode {
         case 200:
-            return try JSONDecoder().decode(GitHubRelease.self, from: data)
+            guard let finalURL = httpResponse.url else {
+                throw GitHubUpdateCheckerError.invalidResponse
+            }
+
+            if finalURL.path.hasSuffix("/releases") {
+                return nil
+            }
+
+            guard let tagName = Self.releaseTag(from: finalURL) else {
+                throw GitHubUpdateCheckerError.invalidResponse
+            }
+
+            return GitHubLatestRelease(tagName: tagName, htmlURL: finalURL)
         case 404:
             return nil
-        case 403, 429:
-            throw GitHubUpdateCheckerError.rateLimited
         default:
             throw GitHubUpdateCheckerError.requestFailed(httpResponse.statusCode)
         }
@@ -108,6 +107,17 @@ struct GitHubUpdateChecker {
         }
 
         return .orderedSame
+    }
+
+    private static func releaseTag(from url: URL) -> String? {
+        let components = url.pathComponents
+        guard let tagIndex = components.firstIndex(of: "tag"),
+              tagIndex + 1 < components.count
+        else {
+            return nil
+        }
+
+        return components[tagIndex + 1].removingPercentEncoding
     }
 
     private static func versionParts(_ version: String) -> [Int] {

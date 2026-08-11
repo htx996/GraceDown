@@ -61,11 +61,13 @@ for Automation permission the first time it runs.
 ## Update Check
 
 The menu bar right-click menu includes **检查更新**. It checks the latest GitHub
-Release from:
+Release by following:
 
 ```text
 https://github.com/htx996/GraceDown/releases/latest
 ```
+
+This avoids unauthenticated GitHub API rate limits.
 
 ## License
 
