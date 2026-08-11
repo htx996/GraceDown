@@ -444,32 +444,71 @@ private final class MenuBarMonitorPanel: NSPanel {
 
     func showWithScaleAnimation() {
         hasShadow = false
-        setFrame(collapsedFrame, display: false)
+        setFrame(expandedFrame, display: false)
         alphaValue = 0
         orderFrontRegardless()
+        displayIfNeeded()
+
+        guard let snapshotImage = snapshotImage() else {
+            NSAnimationContext.runAnimationGroup { context in
+                context.duration = Self.openDuration
+                context.timingFunction = CAMediaTimingFunction(controlPoints: 0.18, 0.92, 0.22, 1)
+                animator().alphaValue = 1
+            } completionHandler: { [weak self] in
+                Task { @MainActor in
+                    self?.hasShadow = true
+                    self?.invalidateShadow()
+                }
+            }
+            return
+        }
+
+        let animationWindow = MenuBarPanelAnimationWindow(image: snapshotImage, frame: collapsedFrame)
+        animationWindow.alphaValue = 0.35
+        animationWindow.orderFrontRegardless()
 
         NSAnimationContext.runAnimationGroup { context in
             context.duration = Self.openDuration
             context.timingFunction = CAMediaTimingFunction(controlPoints: 0.18, 0.92, 0.22, 1)
-            animator().setFrame(expandedFrame, display: true)
-            animator().alphaValue = 1
-        } completionHandler: { [weak self] in
+            animationWindow.animator().setFrame(expandedFrame, display: true)
+            animationWindow.animator().alphaValue = 1
+        } completionHandler: { [weak self, weak animationWindow] in
             Task { @MainActor in
+                self?.alphaValue = 1
                 self?.hasShadow = true
                 self?.invalidateShadow()
+                animationWindow?.close()
             }
         }
     }
 
     func closeWithScaleAnimation() {
         hasShadow = false
+        guard let snapshotImage = snapshotImage() else {
+            NSAnimationContext.runAnimationGroup { context in
+                context.duration = Self.closeDuration
+                context.timingFunction = CAMediaTimingFunction(controlPoints: 0.36, 0, 0.66, -0.2)
+                animator().alphaValue = 0
+            } completionHandler: { [weak self] in
+                Task { @MainActor in
+                    self?.close()
+                }
+            }
+            return
+        }
+
+        let animationWindow = MenuBarPanelAnimationWindow(image: snapshotImage, frame: expandedFrame)
+        animationWindow.orderFrontRegardless()
+        alphaValue = 0
+
         NSAnimationContext.runAnimationGroup { context in
             context.duration = Self.closeDuration
-            context.timingFunction = CAMediaTimingFunction(controlPoints: 0.36, 0, 0.66, -0.2)
-            animator().setFrame(collapsedFrame, display: true)
-            animator().alphaValue = 0
-        } completionHandler: { [weak self] in
+            context.timingFunction = CAMediaTimingFunction(controlPoints: 0.34, 0.02, 0.78, 0.34)
+            animationWindow.animator().setFrame(collapsedFrame, display: true)
+            animationWindow.animator().alphaValue = 0
+        } completionHandler: { [weak self, weak animationWindow] in
             Task { @MainActor in
+                animationWindow?.close()
                 self?.close()
             }
         }
@@ -484,7 +523,55 @@ private final class MenuBarMonitorPanel: NSPanel {
         )
     }
 
-    private static func clamped(_ value: CGFloat, lower: CGFloat, upper: CGFloat) -> CGFloat {
-        min(max(value, lower), upper)
+    private func snapshotImage() -> NSImage? {
+        guard let contentView else {
+            return nil
+        }
+
+        contentView.layoutSubtreeIfNeeded()
+        contentView.displayIfNeeded()
+
+        let bounds = contentView.bounds
+        guard let bitmap = contentView.bitmapImageRepForCachingDisplay(in: bounds) else {
+            return nil
+        }
+
+        bitmap.size = bounds.size
+        contentView.cacheDisplay(in: bounds, to: bitmap)
+
+        let image = NSImage(size: bounds.size)
+        image.addRepresentation(bitmap)
+        return image
+    }
+}
+
+@MainActor
+private final class MenuBarPanelAnimationWindow: NSPanel {
+    override var canBecomeKey: Bool { false }
+    override var canBecomeMain: Bool { false }
+
+    init(image: NSImage, frame: NSRect) {
+        let imageView = NSImageView(frame: NSRect(origin: .zero, size: frame.size))
+        imageView.image = image
+        imageView.imageScaling = .scaleAxesIndependently
+        imageView.autoresizingMask = [.width, .height]
+        imageView.wantsLayer = true
+
+        super.init(
+            contentRect: frame,
+            styleMask: [.borderless, .nonactivatingPanel],
+            backing: .buffered,
+            defer: false
+        )
+
+        contentView = imageView
+        isFloatingPanel = true
+        isReleasedWhenClosed = false
+        isOpaque = false
+        hasShadow = true
+        backgroundColor = .clear
+        ignoresMouseEvents = true
+        level = .popUpMenu
+        collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .transient]
     }
 }
