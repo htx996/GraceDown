@@ -34,7 +34,7 @@ struct SettingsView: View {
                         if preferences.connectionMode == .networkNUT {
                             SettingsDivider()
 
-                            SettingsRow("NAS 地址", subtitle: "绿联 NAS 的 IP 或主机名") {
+                            SettingsRow("NAS 地址", subtitle: "NUT 服务的 IP 或主机名") {
                                 SettingsTextField(
                                     placeholder: "192.168.2.86",
                                     text: $preferences.nasHost
@@ -231,9 +231,10 @@ struct SettingsView: View {
         case .networkNUT:
             let host = preferences.nasHost.trimmingCharacters(in: .whitespacesAndNewlines)
             let address = host.isEmpty ? "未配置 NAS" : "\(host):\(preferences.nasPort)"
-            return "绿联 NAS · \(address)"
+            let upsName = store.selectedUPS?.name ?? "未检测到 UPS"
+            return "\(upsName) · \(address)"
         case .localIOKit:
-            return "本机 USB/电池电源信息"
+            return store.selectedUPS?.name ?? "本机 USB/电池电源信息"
         }
     }
 

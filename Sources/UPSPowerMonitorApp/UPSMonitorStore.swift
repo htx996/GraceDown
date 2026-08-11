@@ -7,6 +7,7 @@ final class UPSMonitorStore: ObservableObject {
     @Published private(set) var snapshots: [PowerSourceSnapshot] = []
     @Published private(set) var selectedUPS: PowerSourceSnapshot?
     @Published private(set) var lastRefresh: Date?
+    @Published private(set) var lastRefreshDurationMilliseconds: Int?
     @Published private(set) var isRefreshing = false
     @Published private(set) var errorMessage: String?
     @Published private(set) var shutdownDecision = ShutdownDecision(action: .none)
@@ -56,7 +57,8 @@ final class UPSMonitorStore: ObservableObject {
         }
 
         let configuration = preferences.configuration
-        lastRefreshAttempt = Date()
+        let refreshStartedAt = Date()
+        lastRefreshAttempt = refreshStartedAt
         isRefreshing = true
 
         refreshTask = Task { [weak self] in
@@ -70,6 +72,10 @@ final class UPSMonitorStore: ObservableObject {
                 self.refreshTask = nil
                 self.isRefreshing = false
                 self.lastRefresh = Date()
+                self.lastRefreshDurationMilliseconds = max(
+                    1,
+                    Int(Date().timeIntervalSince(refreshStartedAt) * 1000)
+                )
 
                 switch result {
                 case .success(let snapshots):
@@ -145,6 +151,33 @@ final class UPSMonitorStore: ObservableObject {
         }
 
         return preferences.autoShutdownEnabled ? "已启用" : "未启用"
+    }
+
+    var shutdownRuleBrief: String {
+        let rules = preferences.configuration.shutdownRules
+        var conditions: [String] = []
+        let selectedStatuses = orderedStatusConditions(in: rules.statusConditions)
+        conditions.append(contentsOf: selectedStatuses.map(\.displayName))
+        if rules.triggerOnLowBatteryPercent {
+            conditions.append("低于 \(rules.lowBatteryPercent)%")
+        }
+        if rules.triggerOnLowRuntime {
+            conditions.append("低于 \(rules.lowRuntimeMinutes) 分钟")
+        }
+        if rules.triggerOnLowBatterySignal {
+            conditions.append("低电量")
+        }
+
+        return conditions.isEmpty ? "未选择" : conditions.joined(separator: " / ")
+    }
+
+    var shutdownGraceDescription: String {
+        "\(preferences.configuration.shutdownRules.gracePeriodSeconds) 秒确认"
+    }
+
+    var lowBatteryMonitoringDescription: String {
+        let rules = preferences.configuration.shutdownRules
+        return rules.triggerOnLowBatterySignal || rules.triggerOnLowBatteryPercent ? "已监听" : "未监听"
     }
 
     var shutdownRuleSummary: String {

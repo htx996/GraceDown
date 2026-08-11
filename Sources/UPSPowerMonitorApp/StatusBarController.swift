@@ -3,6 +3,17 @@ import Combine
 import QuartzCore
 import SwiftUI
 
+private enum PopoverState {
+    case closed
+    case opening
+    case open
+    case closing
+
+    var isTransitioning: Bool {
+        self == .opening || self == .closing
+    }
+}
+
 @MainActor
 final class StatusBarController: NSObject {
     static let shared = StatusBarController()
@@ -15,6 +26,7 @@ final class StatusBarController: NSObject {
     private var store: UPSMonitorStore?
     private var cancellables = Set<AnyCancellable>()
     private var isCheckingForUpdates = false
+    private var popoverState = PopoverState.closed
 
     func configure(store: UPSMonitorStore) {
         self.store = store
@@ -42,6 +54,10 @@ final class StatusBarController: NSObject {
     }
 
     @objc private func handleStatusItemClick(_ sender: NSStatusBarButton) {
+        guard !popoverState.isTransitioning else {
+            return
+        }
+
         guard let event = NSApp.currentEvent else {
             togglePopover(from: sender)
             return
@@ -111,15 +127,18 @@ final class StatusBarController: NSObject {
     }
 
     private func togglePopover(from button: NSStatusBarButton) {
-        if popoverWindow?.isVisible == true {
+        switch popoverState {
+        case .open:
             closePopover()
-        } else {
+        case .closed:
             showPopover(from: button)
+        case .opening, .closing:
+            break
         }
     }
 
     private func showPopover(from button: NSStatusBarButton) {
-        guard let store else {
+        guard popoverState == .closed, popoverWindow == nil, let store else {
             return
         }
 
@@ -135,6 +154,9 @@ final class StatusBarController: NSObject {
                 },
                 settingsAction: { [weak self] in
                     self?.openSettings(nil)
+                },
+                diagnosticsAction: { [weak self] in
+                    self?.runDiagnostics(nil)
                 }
             )
         )
@@ -142,29 +164,51 @@ final class StatusBarController: NSObject {
 
         let fittingSize = hostingController.view.fittingSize
         let panelHeight = max(1, ceil(fittingSize.height))
+        let panelSize = NSSize(width: MenuBarMonitorPanel.width, height: panelHeight)
+        hostingController.view.frame = NSRect(origin: .zero, size: panelSize)
+
         let panel = MenuBarMonitorPanel(
-            contentRect: NSRect(x: 0, y: 0, width: MenuBarMonitorPanel.width, height: panelHeight),
+            contentRect: NSRect(origin: .zero, size: panelSize),
             styleMask: [.borderless, .nonactivatingPanel],
             backing: .buffered,
             defer: false
         )
         panel.contentViewController = hostingController
-        panel.setContentSize(NSSize(width: MenuBarMonitorPanel.width, height: panelHeight))
+        panel.setContentSize(panelSize)
         panel.position(relativeTo: button)
 
         popoverWindow = panel
+        popoverState = .opening
         installPopoverEventMonitors()
-        panel.showWithScaleAnimation()
+        panel.showWithScaleAnimation { [weak self, weak panel] in
+            guard let self, let panel, self.popoverWindow === panel else {
+                return
+            }
+
+            self.popoverState = .open
+        }
     }
 
     private func closePopover() {
-        removePopoverEventMonitors()
-        guard let panel = popoverWindow else {
+        guard popoverState == .open else {
             return
         }
 
-        popoverWindow = nil
-        panel.closeWithScaleAnimation()
+        removePopoverEventMonitors()
+        guard let panel = popoverWindow else {
+            popoverState = .closed
+            return
+        }
+
+        popoverState = .closing
+        panel.closeWithScaleAnimation { [weak self, weak panel] in
+            guard let self, let panel, self.popoverWindow === panel else {
+                return
+            }
+
+            self.popoverWindow = nil
+            self.popoverState = .closed
+        }
     }
 
     private func installPopoverEventMonitors() {
@@ -379,7 +423,7 @@ final class StatusBarController: NSObject {
 
 @MainActor
 private final class MenuBarMonitorPanel: NSPanel {
-    static let width: CGFloat = 430
+    static let width: CGFloat = MonitorPopoverView.preferredWidth
 
     private static let screenPadding: CGFloat = 8
     private static let statusItemSpacing: CGFloat = 7
@@ -389,6 +433,7 @@ private final class MenuBarMonitorPanel: NSPanel {
 
     private var expandedFrame = NSRect.zero
     private var collapsedFrame = NSRect.zero
+    private var animationWindow: MenuBarPanelAnimationWindow?
 
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { false }
@@ -445,7 +490,9 @@ private final class MenuBarMonitorPanel: NSPanel {
         setFrame(expandedFrame, display: false)
     }
 
-    func showWithScaleAnimation() {
+    func showWithScaleAnimation(completion: @escaping @MainActor @Sendable () -> Void) {
+        closeAnimationWindow()
+        MenuBarPanelAnimationWindow.closeAll()
         hasShadow = false
         setFrame(expandedFrame, display: false)
         alphaValue = 0
@@ -456,11 +503,13 @@ private final class MenuBarMonitorPanel: NSPanel {
             animateWindow(to: expandedFrame, alpha: 1, duration: Self.openDuration) { [weak self] in
                 self?.hasShadow = true
                 self?.invalidateShadow()
+                completion()
             }
             return
         }
 
         let animationWindow = MenuBarPanelAnimationWindow(image: snapshotImage, frame: collapsedFrame)
+        self.animationWindow = animationWindow
         animationWindow.alphaValue = 0.18
         animationWindow.orderFrontRegardless()
 
@@ -475,21 +524,29 @@ private final class MenuBarMonitorPanel: NSPanel {
                 self?.alphaValue = 1
                 self?.hasShadow = true
                 self?.invalidateShadow()
+                if self?.animationWindow === animationWindow {
+                    self?.animationWindow = nil
+                }
                 animationWindow?.close()
+                completion()
             }
         }
     }
 
-    func closeWithScaleAnimation() {
+    func closeWithScaleAnimation(completion: @escaping @MainActor @Sendable () -> Void) {
+        closeAnimationWindow()
+        MenuBarPanelAnimationWindow.closeAll()
         hasShadow = false
         guard let snapshotImage = snapshotImage() else {
             animateWindow(to: collapsedFrame, alpha: 0, duration: Self.closeDuration) { [weak self] in
                 self?.close()
+                completion()
             }
             return
         }
 
         let animationWindow = MenuBarPanelAnimationWindow(image: snapshotImage, frame: expandedFrame)
+        self.animationWindow = animationWindow
         animationWindow.orderFrontRegardless()
         alphaValue = 0
 
@@ -501,10 +558,19 @@ private final class MenuBarMonitorPanel: NSPanel {
             animationWindow.animator().alphaValue = 0
         } completionHandler: { [weak self, weak animationWindow] in
             Task { @MainActor in
+                if self?.animationWindow === animationWindow {
+                    self?.animationWindow = nil
+                }
                 animationWindow?.close()
                 self?.close()
+                completion()
             }
         }
+    }
+
+    private func closeAnimationWindow() {
+        animationWindow?.close()
+        animationWindow = nil
     }
 
     private static func collapsedFrame(for expandedSize: NSSize, anchor: NSPoint) -> NSRect {
@@ -564,8 +630,15 @@ private final class MenuBarMonitorPanel: NSPanel {
 
 @MainActor
 private final class MenuBarPanelAnimationWindow: NSPanel {
+    private static var activeWindows: [MenuBarPanelAnimationWindow] = []
+
     override var canBecomeKey: Bool { false }
     override var canBecomeMain: Bool { false }
+
+    static func closeAll() {
+        activeWindows.forEach { $0.close() }
+        activeWindows.removeAll()
+    }
 
     init(image: NSImage, frame: NSRect) {
         let imageView = NSImageView(frame: NSRect(origin: .zero, size: frame.size))
@@ -593,5 +666,11 @@ private final class MenuBarPanelAnimationWindow: NSPanel {
         level = .popUpMenu
         animationBehavior = .none
         collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .transient]
+        Self.activeWindows.append(self)
+    }
+
+    override func close() {
+        super.close()
+        Self.activeWindows.removeAll { $0 === self }
     }
 }
