@@ -54,7 +54,7 @@ struct MonitorPopoverView: View {
         }
         .padding(14)
         .frame(width: 430)
-        .background(Color(nsColor: .windowBackgroundColor).opacity(0.88), in: popoverShape)
+        .background(Color(nsColor: .windowBackgroundColor), in: popoverShape)
         .clipShape(popoverShape)
         .background {
             PopoverWindowShapeConfigurator(cornerRadius: AppCornerRadius.panel)

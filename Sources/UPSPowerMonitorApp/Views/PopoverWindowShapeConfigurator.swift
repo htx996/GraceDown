@@ -29,13 +29,28 @@ struct PopoverWindowShapeConfigurator: NSViewRepresentable {
             return
         }
 
-        configureRoundedContainer(contentView)
-        if let frameView = contentView.superview {
-            configureRoundedContainer(frameView)
+        configureClearHierarchy(contentView)
+
+        var parent = contentView.superview
+        while let view = parent {
+            configureClearContainer(view)
+            parent = view.superview
         }
     }
 
-    private func configureRoundedContainer(_ view: NSView) {
+    private func configureClearHierarchy(_ view: NSView) {
+        configureClearContainer(view)
+        for subview in view.subviews {
+            configureClearHierarchy(subview)
+        }
+    }
+
+    private func configureClearContainer(_ view: NSView) {
+        if let visualEffectView = view as? NSVisualEffectView {
+            visualEffectView.state = .inactive
+            visualEffectView.material = .windowBackground
+        }
+
         view.wantsLayer = true
         view.layer?.backgroundColor = NSColor.clear.cgColor
         view.layer?.cornerRadius = cornerRadius
