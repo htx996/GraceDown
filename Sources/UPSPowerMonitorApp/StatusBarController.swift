@@ -383,12 +383,12 @@ private final class MenuBarMonitorPanel: NSPanel {
 
     private static let screenPadding: CGFloat = 8
     private static let statusItemSpacing: CGFloat = 7
-    private static let fadeInDuration: TimeInterval = 0.12
-    private static let fadeOutDuration: TimeInterval = 0.12
-    private static let initialScale: CGFloat = 0.12
-    private static let closingScale: CGFloat = 0.12
+    private static let collapsedSize = NSSize(width: 28, height: 20)
+    private static let openDuration: TimeInterval = 0.20
+    private static let closeDuration: TimeInterval = 0.15
 
-    private var animationAnchorPoint = CGPoint(x: 0.5, y: 1)
+    private var expandedFrame = NSRect.zero
+    private var collapsedFrame = NSRect.zero
 
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { false }
@@ -437,132 +437,51 @@ private final class MenuBarMonitorPanel: NSPanel {
             y = min(aboveY, screenFrame.maxY - size.height - Self.screenPadding)
         }
 
-        setFrameOrigin(NSPoint(x: x, y: y))
-        updateAnimationAnchor(buttonRectOnScreen: buttonRectOnScreen, panelOrigin: NSPoint(x: x, y: y), panelSize: size)
+        expandedFrame = NSRect(origin: NSPoint(x: x, y: y), size: size)
+        collapsedFrame = Self.collapsedFrame(from: buttonRectOnScreen)
+        setFrame(expandedFrame, display: false)
     }
 
     func showWithScaleAnimation() {
         hasShadow = false
-        prepareContentLayer(scale: Self.initialScale)
+        setFrame(collapsedFrame, display: false)
         alphaValue = 0
         orderFrontRegardless()
 
-        animateContentIn { [weak self] in
-            self?.hasShadow = true
-            self?.invalidateShadow()
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = Self.openDuration
+            context.timingFunction = CAMediaTimingFunction(controlPoints: 0.18, 0.92, 0.22, 1)
+            animator().setFrame(expandedFrame, display: true)
+            animator().alphaValue = 1
+        } completionHandler: { [weak self] in
+            Task { @MainActor in
+                self?.hasShadow = true
+                self?.invalidateShadow()
+            }
         }
     }
 
     func closeWithScaleAnimation() {
         hasShadow = false
-        animateContentOut { [weak self] in
-            self?.close()
-        }
-    }
-
-    private func updateAnimationAnchor(buttonRectOnScreen: NSRect, panelOrigin: NSPoint, panelSize: NSSize) {
-        let iconCenter = NSPoint(x: buttonRectOnScreen.midX, y: buttonRectOnScreen.midY)
-        let anchorX = Self.clamped((iconCenter.x - panelOrigin.x) / panelSize.width, lower: 0, upper: 1)
-        let anchorY = Self.clamped((iconCenter.y - panelOrigin.y) / panelSize.height, lower: -0.25, upper: 1.25)
-        animationAnchorPoint = CGPoint(x: anchorX, y: anchorY)
-    }
-
-    private func prepareContentLayer(scale: CGFloat) {
-        guard let contentView, let layer = configuredContentLayer() else {
-            return
-        }
-
-        contentView.layoutSubtreeIfNeeded()
-
-        CATransaction.begin()
-        CATransaction.setDisableActions(true)
-        layer.transform = CATransform3DMakeScale(scale, scale, 1)
-        CATransaction.commit()
-    }
-
-    private func animateContentIn(completion: (@MainActor @Sendable () -> Void)? = nil) {
-        guard let layer = configuredContentLayer() else {
-            alphaValue = 1
-            completion?()
-            return
-        }
-
-        let scaleAnimation = CABasicAnimation(keyPath: "transform.scale")
-        scaleAnimation.fromValue = Self.initialScale
-        scaleAnimation.toValue = 1
-        scaleAnimation.duration = 0.18
-        scaleAnimation.timingFunction = CAMediaTimingFunction(controlPoints: 0.16, 0.88, 0.22, 1)
-
-        CATransaction.begin()
-        CATransaction.setDisableActions(true)
-        layer.transform = CATransform3DIdentity
-        CATransaction.commit()
-        layer.add(scaleAnimation, forKey: "menuBarPanelScaleIn")
-
         NSAnimationContext.runAnimationGroup { context in
-            context.duration = Self.fadeInDuration
-            context.timingFunction = CAMediaTimingFunction(name: .easeOut)
-            animator().alphaValue = 1
-        } completionHandler: {
-            Task { @MainActor in
-                completion?()
-            }
-        }
-    }
-
-    private func animateContentOut(completion: (@MainActor @Sendable () -> Void)? = nil) {
-        guard let layer = configuredContentLayer() else {
-            alphaValue = 0
-            completion?()
-            return
-        }
-
-        let currentScale = layer.presentation()?.value(forKeyPath: "transform.scale") as? CGFloat ?? 1
-        let scaleAnimation = CABasicAnimation(keyPath: "transform.scale")
-        scaleAnimation.fromValue = currentScale
-        scaleAnimation.toValue = Self.closingScale
-        scaleAnimation.duration = Self.fadeOutDuration
-        scaleAnimation.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
-
-        CATransaction.begin()
-        CATransaction.setDisableActions(true)
-        layer.transform = CATransform3DMakeScale(Self.closingScale, Self.closingScale, 1)
-        CATransaction.commit()
-        layer.add(scaleAnimation, forKey: "menuBarPanelScaleOut")
-
-        NSAnimationContext.runAnimationGroup { context in
-            context.duration = Self.fadeOutDuration
-            context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+            context.duration = Self.closeDuration
+            context.timingFunction = CAMediaTimingFunction(controlPoints: 0.36, 0, 0.66, -0.2)
+            animator().setFrame(collapsedFrame, display: true)
             animator().alphaValue = 0
-        } completionHandler: {
+        } completionHandler: { [weak self] in
             Task { @MainActor in
-                completion?()
+                self?.close()
             }
         }
     }
 
-    private func configuredContentLayer() -> CALayer? {
-        guard let contentView else {
-            return nil
-        }
-
-        contentView.wantsLayer = true
-        guard let layer = contentView.layer else {
-            return nil
-        }
-
-        let bounds = contentView.bounds
-        CATransaction.begin()
-        CATransaction.setDisableActions(true)
-        layer.anchorPoint = animationAnchorPoint
-        layer.position = CGPoint(
-            x: bounds.width * animationAnchorPoint.x,
-            y: bounds.height * animationAnchorPoint.y
+    private static func collapsedFrame(from buttonRectOnScreen: NSRect) -> NSRect {
+        NSRect(
+            x: buttonRectOnScreen.midX - collapsedSize.width / 2,
+            y: buttonRectOnScreen.midY - collapsedSize.height / 2,
+            width: collapsedSize.width,
+            height: collapsedSize.height
         )
-        layer.masksToBounds = false
-        CATransaction.commit()
-
-        return layer
     }
 
     private static func clamped(_ value: CGFloat, lower: CGFloat, upper: CGFloat) -> CGFloat {
