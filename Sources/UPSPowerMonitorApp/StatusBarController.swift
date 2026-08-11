@@ -1,5 +1,6 @@
 import AppKit
 import Combine
+import QuartzCore
 import SwiftUI
 
 @MainActor
@@ -153,13 +154,17 @@ final class StatusBarController: NSObject {
 
         popoverWindow = panel
         installPopoverEventMonitors()
-        panel.orderFrontRegardless()
+        panel.showWithScaleAnimation()
     }
 
     private func closePopover() {
         removePopoverEventMonitors()
-        popoverWindow?.close()
+        guard let panel = popoverWindow else {
+            return
+        }
+
         popoverWindow = nil
+        panel.closeWithScaleAnimation()
     }
 
     private func installPopoverEventMonitors() {
@@ -372,11 +377,15 @@ final class StatusBarController: NSObject {
     }
 }
 
+@MainActor
 private final class MenuBarMonitorPanel: NSPanel {
     static let width: CGFloat = 430
 
     private static let screenPadding: CGFloat = 8
     private static let statusItemSpacing: CGFloat = 7
+    private static let animationDuration: TimeInterval = 0.16
+    private static let initialScale: CGFloat = 0.96
+    private static let closingScale: CGFloat = 0.985
 
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { false }
@@ -426,5 +435,80 @@ private final class MenuBarMonitorPanel: NSPanel {
         }
 
         setFrameOrigin(NSPoint(x: x, y: y))
+    }
+
+    func showWithScaleAnimation() {
+        prepareContentLayer(scale: Self.initialScale, opacity: 0)
+        alphaValue = 0
+        orderFrontRegardless()
+
+        animateContent(scale: 1, opacity: 1, duration: Self.animationDuration)
+    }
+
+    func closeWithScaleAnimation() {
+        animateContent(scale: Self.closingScale, opacity: 0, duration: 0.11) { [weak self] in
+            self?.close()
+        }
+    }
+
+    private func prepareContentLayer(scale: CGFloat, opacity: Float) {
+        guard let contentView else {
+            return
+        }
+
+        contentView.wantsLayer = true
+        contentView.layer?.anchorPoint = CGPoint(x: 0.5, y: 0.5)
+        contentView.layer?.opacity = opacity
+        contentView.layer?.transform = CATransform3DMakeScale(scale, scale, 1)
+    }
+
+    private func animateContent(
+        scale: CGFloat,
+        opacity: Float,
+        duration: TimeInterval,
+        completion: (@MainActor @Sendable () -> Void)? = nil
+    ) {
+        guard let contentView, let layer = contentView.layer else {
+            alphaValue = CGFloat(opacity)
+            completion?()
+            return
+        }
+
+        let targetTransform = CATransform3DMakeScale(scale, scale, 1)
+        let currentTransform = layer.presentation()?.transform ?? layer.transform
+        let currentOpacity = layer.presentation()?.opacity ?? layer.opacity
+        let timingFunction = CAMediaTimingFunction(name: .easeOut)
+
+        let opacityAnimation = CABasicAnimation(keyPath: "opacity")
+        opacityAnimation.fromValue = currentOpacity
+        opacityAnimation.toValue = opacity
+
+        let transformAnimation = CABasicAnimation(keyPath: "transform")
+        transformAnimation.fromValue = currentTransform
+        transformAnimation.toValue = targetTransform
+
+        let animationGroup = CAAnimationGroup()
+        animationGroup.animations = [opacityAnimation, transformAnimation]
+        animationGroup.duration = duration
+        animationGroup.timingFunction = timingFunction
+        animationGroup.fillMode = .removed
+        animationGroup.isRemovedOnCompletion = true
+
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        layer.opacity = opacity
+        layer.transform = targetTransform
+        CATransaction.commit()
+        layer.add(animationGroup, forKey: "menuBarPanelScale")
+
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = duration
+            context.timingFunction = timingFunction
+            animator().alphaValue = CGFloat(opacity)
+        } completionHandler: {
+            Task { @MainActor in
+                completion?()
+            }
+        }
     }
 }
