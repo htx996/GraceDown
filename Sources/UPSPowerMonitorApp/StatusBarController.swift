@@ -1,6 +1,5 @@
 import AppKit
 import Combine
-import QuartzCore
 import SwiftUI
 
 @MainActor
@@ -9,9 +8,7 @@ final class StatusBarController: NSObject {
 
     private let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
     private let updateChecker = GitHubUpdateChecker(owner: "htx996", repository: "GraceDown")
-    private var popoverWindow: MenuBarMonitorPanel?
-    private var localPopoverEventMonitor: Any?
-    private var globalPopoverEventMonitor: Any?
+    private var popover: NSPopover?
     private var store: UPSMonitorStore?
     private var cancellables = Set<AnyCancellable>()
     private var isCheckingForUpdates = false
@@ -111,7 +108,7 @@ final class StatusBarController: NSObject {
     }
 
     private func togglePopover(from button: NSStatusBarButton) {
-        if popoverWindow?.isVisible == true {
+        if popover?.isShown == true {
             closePopover()
         } else {
             showPopover(from: button)
@@ -125,9 +122,10 @@ final class StatusBarController: NSObject {
 
         store.start()
 
-        closePopover()
-
-        let hostingController = NSHostingController(
+        let popover = NSPopover()
+        popover.behavior = .transient
+        popover.animates = true
+        popover.contentViewController = NSHostingController(
             rootView: MonitorPopoverView(
                 store: store,
                 closeAction: { [weak self] in
@@ -138,87 +136,14 @@ final class StatusBarController: NSObject {
                 }
             )
         )
-        hostingController.view.frame = NSRect(x: 0, y: 0, width: MenuBarMonitorPanel.width, height: 1)
 
-        let fittingSize = hostingController.view.fittingSize
-        let panelHeight = max(1, ceil(fittingSize.height))
-        let panel = MenuBarMonitorPanel(
-            contentRect: NSRect(x: 0, y: 0, width: MenuBarMonitorPanel.width, height: panelHeight),
-            styleMask: [.borderless, .nonactivatingPanel],
-            backing: .buffered,
-            defer: false
-        )
-        panel.contentViewController = hostingController
-        panel.setContentSize(NSSize(width: MenuBarMonitorPanel.width, height: panelHeight))
-        panel.position(relativeTo: button)
-
-        popoverWindow = panel
-        installPopoverEventMonitors()
-        panel.showWithScaleAnimation()
+        self.popover = popover
+        popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
     }
 
     private func closePopover() {
-        removePopoverEventMonitors()
-        guard let panel = popoverWindow else {
-            return
-        }
-
-        popoverWindow = nil
-        panel.closeWithScaleAnimation()
-    }
-
-    private func installPopoverEventMonitors() {
-        removePopoverEventMonitors()
-
-        localPopoverEventMonitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown, .keyDown]) { [weak self] event in
-            guard let self else {
-                return event
-            }
-
-            if event.type == .keyDown, event.keyCode == 53 {
-                closePopover()
-                return nil
-            }
-
-            if event.type == .leftMouseDown || event.type == .rightMouseDown {
-                guard let panel = popoverWindow, panel.isVisible else {
-                    return event
-                }
-
-                if event.window == panel || eventIsInsideStatusButton(event) {
-                    return event
-                }
-
-                closePopover()
-            }
-
-            return event
-        }
-
-        globalPopoverEventMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] _ in
-            self?.closePopover()
-        }
-    }
-
-    private func removePopoverEventMonitors() {
-        if let localPopoverEventMonitor {
-            NSEvent.removeMonitor(localPopoverEventMonitor)
-            self.localPopoverEventMonitor = nil
-        }
-
-        if let globalPopoverEventMonitor {
-            NSEvent.removeMonitor(globalPopoverEventMonitor)
-            self.globalPopoverEventMonitor = nil
-        }
-    }
-
-    private func eventIsInsideStatusButton(_ event: NSEvent) -> Bool {
-        guard let button = statusItem.button, event.window == button.window else {
-            return false
-        }
-
-        let point = button.convert(event.locationInWindow, from: nil)
-        return button.bounds.contains(point)
+        popover?.performClose(nil)
+        popover = nil
     }
 
     private func showContextMenu(from button: NSStatusBarButton) {
@@ -374,204 +299,5 @@ final class StatusBarController: NSObject {
     private var appVersionDescription: String {
         let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "-"
         return "\(appVersion) (\(build))"
-    }
-}
-
-@MainActor
-private final class MenuBarMonitorPanel: NSPanel {
-    static let width: CGFloat = 430
-
-    private static let screenPadding: CGFloat = 8
-    private static let statusItemSpacing: CGFloat = 7
-    private static let collapsedSize = NSSize(width: 28, height: 20)
-    private static let openDuration: TimeInterval = 0.20
-    private static let closeDuration: TimeInterval = 0.15
-
-    private var expandedFrame = NSRect.zero
-    private var collapsedFrame = NSRect.zero
-
-    override var canBecomeKey: Bool { true }
-    override var canBecomeMain: Bool { false }
-
-    override init(
-        contentRect: NSRect,
-        styleMask style: NSWindow.StyleMask,
-        backing backingStoreType: NSWindow.BackingStoreType,
-        defer flag: Bool
-    ) {
-        super.init(contentRect: contentRect, styleMask: style, backing: backingStoreType, defer: flag)
-
-        isFloatingPanel = true
-        isReleasedWhenClosed = false
-        isOpaque = false
-        hasShadow = true
-        backgroundColor = .clear
-        level = .popUpMenu
-        animationBehavior = .utilityWindow
-        collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .transient]
-    }
-
-    func position(relativeTo button: NSStatusBarButton) {
-        guard let buttonWindow = button.window else {
-            center()
-            return
-        }
-
-        let buttonRectInWindow = button.convert(button.bounds, to: nil)
-        let buttonRectOnScreen = buttonWindow.convertToScreen(buttonRectInWindow)
-        let screenFrame = buttonWindow.screen?.visibleFrame ?? NSScreen.main?.visibleFrame ?? NSRect(x: 0, y: 0, width: Self.width, height: frame.height)
-        let size = frame.size
-
-        let proposedX = buttonRectOnScreen.midX - size.width / 2
-        let x = min(
-            max(proposedX, screenFrame.minX + Self.screenPadding),
-            screenFrame.maxX - size.width - Self.screenPadding
-        )
-
-        let belowY = buttonRectOnScreen.minY - size.height - Self.statusItemSpacing
-        let aboveY = buttonRectOnScreen.maxY + Self.statusItemSpacing
-        let y: CGFloat
-        if belowY >= screenFrame.minY + Self.screenPadding {
-            y = belowY
-        } else {
-            y = min(aboveY, screenFrame.maxY - size.height - Self.screenPadding)
-        }
-
-        expandedFrame = NSRect(origin: NSPoint(x: x, y: y), size: size)
-        collapsedFrame = Self.collapsedFrame(from: buttonRectOnScreen)
-        setFrame(expandedFrame, display: false)
-    }
-
-    func showWithScaleAnimation() {
-        hasShadow = false
-        setFrame(expandedFrame, display: false)
-        alphaValue = 0
-        orderFrontRegardless()
-        displayIfNeeded()
-
-        guard let snapshotImage = snapshotImage() else {
-            NSAnimationContext.runAnimationGroup { context in
-                context.duration = Self.openDuration
-                context.timingFunction = CAMediaTimingFunction(controlPoints: 0.18, 0.92, 0.22, 1)
-                animator().alphaValue = 1
-            } completionHandler: { [weak self] in
-                Task { @MainActor in
-                    self?.hasShadow = true
-                    self?.invalidateShadow()
-                }
-            }
-            return
-        }
-
-        let animationWindow = MenuBarPanelAnimationWindow(image: snapshotImage, frame: collapsedFrame)
-        animationWindow.alphaValue = 0.35
-        animationWindow.orderFrontRegardless()
-
-        NSAnimationContext.runAnimationGroup { context in
-            context.duration = Self.openDuration
-            context.timingFunction = CAMediaTimingFunction(controlPoints: 0.18, 0.92, 0.22, 1)
-            animationWindow.animator().setFrame(expandedFrame, display: true)
-            animationWindow.animator().alphaValue = 1
-        } completionHandler: { [weak self, weak animationWindow] in
-            Task { @MainActor in
-                self?.alphaValue = 1
-                self?.hasShadow = true
-                self?.invalidateShadow()
-                animationWindow?.close()
-            }
-        }
-    }
-
-    func closeWithScaleAnimation() {
-        hasShadow = false
-        guard let snapshotImage = snapshotImage() else {
-            NSAnimationContext.runAnimationGroup { context in
-                context.duration = Self.closeDuration
-                context.timingFunction = CAMediaTimingFunction(controlPoints: 0.36, 0, 0.66, -0.2)
-                animator().alphaValue = 0
-            } completionHandler: { [weak self] in
-                Task { @MainActor in
-                    self?.close()
-                }
-            }
-            return
-        }
-
-        let animationWindow = MenuBarPanelAnimationWindow(image: snapshotImage, frame: expandedFrame)
-        animationWindow.orderFrontRegardless()
-        alphaValue = 0
-
-        NSAnimationContext.runAnimationGroup { context in
-            context.duration = Self.closeDuration
-            context.timingFunction = CAMediaTimingFunction(controlPoints: 0.34, 0.02, 0.78, 0.34)
-            animationWindow.animator().setFrame(collapsedFrame, display: true)
-            animationWindow.animator().alphaValue = 0
-        } completionHandler: { [weak self, weak animationWindow] in
-            Task { @MainActor in
-                animationWindow?.close()
-                self?.close()
-            }
-        }
-    }
-
-    private static func collapsedFrame(from buttonRectOnScreen: NSRect) -> NSRect {
-        NSRect(
-            x: buttonRectOnScreen.midX - collapsedSize.width / 2,
-            y: buttonRectOnScreen.midY - collapsedSize.height / 2,
-            width: collapsedSize.width,
-            height: collapsedSize.height
-        )
-    }
-
-    private func snapshotImage() -> NSImage? {
-        guard let contentView else {
-            return nil
-        }
-
-        contentView.layoutSubtreeIfNeeded()
-        contentView.displayIfNeeded()
-
-        let bounds = contentView.bounds
-        guard let bitmap = contentView.bitmapImageRepForCachingDisplay(in: bounds) else {
-            return nil
-        }
-
-        bitmap.size = bounds.size
-        contentView.cacheDisplay(in: bounds, to: bitmap)
-
-        let image = NSImage(size: bounds.size)
-        image.addRepresentation(bitmap)
-        return image
-    }
-}
-
-@MainActor
-private final class MenuBarPanelAnimationWindow: NSPanel {
-    override var canBecomeKey: Bool { false }
-    override var canBecomeMain: Bool { false }
-
-    init(image: NSImage, frame: NSRect) {
-        let imageView = NSImageView(frame: NSRect(origin: .zero, size: frame.size))
-        imageView.image = image
-        imageView.imageScaling = .scaleAxesIndependently
-        imageView.autoresizingMask = [.width, .height]
-        imageView.wantsLayer = true
-
-        super.init(
-            contentRect: frame,
-            styleMask: [.borderless, .nonactivatingPanel],
-            backing: .buffered,
-            defer: false
-        )
-
-        contentView = imageView
-        isFloatingPanel = true
-        isReleasedWhenClosed = false
-        isOpaque = false
-        hasShadow = true
-        backgroundColor = .clear
-        ignoresMouseEvents = true
-        level = .popUpMenu
-        collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .transient]
     }
 }
