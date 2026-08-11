@@ -46,7 +46,11 @@ public enum NUTPowerSourceError: Error, LocalizedError, Sendable {
         case .connectionTimedOut:
             "连接 NAS NUT 服务超时"
         case .connectionFailed(let message):
-            "连接 NAS NUT 服务失败：\(message)"
+            if message.localizedCaseInsensitiveContains("network is down") {
+                "连接 NAS NUT 服务失败：macOS 已阻止 GraceDown 访问本地网络，请在系统设置 > 隐私与安全性 > 本地网络中允许 GraceDown。"
+            } else {
+                "连接 NAS NUT 服务失败：\(message)"
+            }
         case .writeFailed:
             "发送 NUT 命令失败"
         case .readTimedOut:

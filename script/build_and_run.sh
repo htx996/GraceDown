@@ -6,8 +6,8 @@ APP_NAME="GraceDown"
 PRODUCT_NAME="UPSPowerMonitor"
 BUNDLE_ID="com.han.UPSPowerMonitor"
 MIN_SYSTEM_VERSION="14.0"
-APP_VERSION="1.0.30"
-APP_BUILD="2026081128"
+APP_VERSION="1.0.31"
+APP_BUILD="2026081129"
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DIST_DIR="$ROOT_DIR/dist"
@@ -65,6 +65,8 @@ cat >"$INFO_PLIST" <<PLIST
   <string>$MIN_SYSTEM_VERSION</string>
   <key>LSUIElement</key>
   <true/>
+  <key>NSLocalNetworkUsageDescription</key>
+  <string>GraceDown 需要访问局域网中的 NAS NUT 服务，用于读取 UPS 状态。</string>
   <key>NSHighResolutionCapable</key>
   <true/>
   <key>NSPrincipalClass</key>

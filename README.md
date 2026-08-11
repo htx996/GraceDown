@@ -50,6 +50,9 @@ Open GraceDown settings and configure:
 - UPS name: leave blank to use the first UPS returned by the NAS
 - Username/password: optional, only required if the NUT service requires it
 
+macOS may ask whether GraceDown can access devices on the local network. Allow
+this permission so GraceDown can connect to the NAS NUT service.
+
 GraceDown reads UPS state from the NAS and can request macOS shutdown when the
 UPS state, battery level, runtime, or low-battery signal matches the configured
 rules. Automatic shutdown is disabled by default and must be explicitly enabled

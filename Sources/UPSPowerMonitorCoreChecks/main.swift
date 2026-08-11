@@ -348,6 +348,18 @@ private final class CheckRunner {
         expectEqual(decision.action, .none, "disabled shutdown action")
     }
 
+    func localNetworkDenialShowsActionableMessage() {
+        let message = NUTPowerSourceError
+            .connectionFailed("The operation couldn't be completed. Network is down")
+            .localizedDescription
+
+        expectEqual(
+            message,
+            "连接 NAS NUT 服务失败：macOS 已阻止 GraceDown 访问本地网络，请在系统设置 > 隐私与安全性 > 本地网络中允许 GraceDown。",
+            "local network denial message"
+        )
+    }
+
     func finish() {
         if failures > 0 {
             print("\(failures) core check(s) failed")
@@ -371,4 +383,5 @@ runner.shutdownPolicyCanTriggerWhenUPSIsOnBatteryPower()
 runner.shutdownPolicyCanMatchSingleOrMultiplePowerStatuses()
 runner.shutdownPolicyCanDisableBatteryPercentAndRuntimeConditions()
 runner.disabledShutdownPolicyNeverTriggers()
+runner.localNetworkDenialShowsActionableMessage()
 runner.finish()
