@@ -56,10 +56,6 @@ struct MonitorPopoverView: View {
         .frame(width: 430)
         .background(Color(nsColor: .windowBackgroundColor).opacity(0.88), in: popoverShape)
         .clipShape(popoverShape)
-        .background {
-            PopoverWindowShapeConfigurator(cornerRadius: AppCornerRadius.panel)
-                .frame(width: 0, height: 0)
-        }
     }
 
     private var footer: some View {
