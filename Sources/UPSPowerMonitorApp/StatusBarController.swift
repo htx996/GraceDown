@@ -383,8 +383,9 @@ private final class MenuBarMonitorPanel: NSPanel {
 
     private static let screenPadding: CGFloat = 8
     private static let statusItemSpacing: CGFloat = 7
-    private static let animationDuration: TimeInterval = 0.16
-    private static let initialScale: CGFloat = 0.96
+    private static let fadeInDuration: TimeInterval = 0.12
+    private static let fadeOutDuration: TimeInterval = 0.10
+    private static let initialScale: CGFloat = 0.94
     private static let closingScale: CGFloat = 0.985
 
     override var canBecomeKey: Bool { true }
@@ -438,77 +439,109 @@ private final class MenuBarMonitorPanel: NSPanel {
     }
 
     func showWithScaleAnimation() {
-        prepareContentLayer(scale: Self.initialScale, opacity: 0)
+        prepareContentLayer(scale: Self.initialScale)
         alphaValue = 0
         orderFrontRegardless()
 
-        animateContent(scale: 1, opacity: 1, duration: Self.animationDuration)
+        animateContentIn()
     }
 
     func closeWithScaleAnimation() {
-        animateContent(scale: Self.closingScale, opacity: 0, duration: 0.11) { [weak self] in
+        animateContentOut { [weak self] in
             self?.close()
         }
     }
 
-    private func prepareContentLayer(scale: CGFloat, opacity: Float) {
-        guard let contentView else {
+    private func prepareContentLayer(scale: CGFloat) {
+        guard let contentView, let layer = configuredContentLayer() else {
             return
         }
 
-        contentView.wantsLayer = true
-        contentView.layer?.anchorPoint = CGPoint(x: 0.5, y: 0.5)
-        contentView.layer?.opacity = opacity
-        contentView.layer?.transform = CATransform3DMakeScale(scale, scale, 1)
+        contentView.layoutSubtreeIfNeeded()
+
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        layer.transform = CATransform3DMakeScale(scale, scale, 1)
+        CATransaction.commit()
     }
 
-    private func animateContent(
-        scale: CGFloat,
-        opacity: Float,
-        duration: TimeInterval,
-        completion: (@MainActor @Sendable () -> Void)? = nil
-    ) {
-        guard let contentView, let layer = contentView.layer else {
-            alphaValue = CGFloat(opacity)
+    private func animateContentIn() {
+        guard let layer = configuredContentLayer() else {
+            alphaValue = 1
+            return
+        }
+
+        let scaleAnimation = CASpringAnimation(keyPath: "transform.scale")
+        scaleAnimation.fromValue = Self.initialScale
+        scaleAnimation.toValue = 1
+        scaleAnimation.mass = 0.8
+        scaleAnimation.stiffness = 340
+        scaleAnimation.damping = 30
+        scaleAnimation.initialVelocity = 0
+        scaleAnimation.duration = min(scaleAnimation.settlingDuration, 0.28)
+
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        layer.transform = CATransform3DIdentity
+        CATransaction.commit()
+        layer.add(scaleAnimation, forKey: "menuBarPanelScaleIn")
+
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = Self.fadeInDuration
+            context.timingFunction = CAMediaTimingFunction(name: .easeOut)
+            animator().alphaValue = 1
+        }
+    }
+
+    private func animateContentOut(completion: (@MainActor @Sendable () -> Void)? = nil) {
+        guard let layer = configuredContentLayer() else {
+            alphaValue = 0
             completion?()
             return
         }
 
-        let targetTransform = CATransform3DMakeScale(scale, scale, 1)
-        let currentTransform = layer.presentation()?.transform ?? layer.transform
-        let currentOpacity = layer.presentation()?.opacity ?? layer.opacity
-        let timingFunction = CAMediaTimingFunction(name: .easeOut)
-
-        let opacityAnimation = CABasicAnimation(keyPath: "opacity")
-        opacityAnimation.fromValue = currentOpacity
-        opacityAnimation.toValue = opacity
-
-        let transformAnimation = CABasicAnimation(keyPath: "transform")
-        transformAnimation.fromValue = currentTransform
-        transformAnimation.toValue = targetTransform
-
-        let animationGroup = CAAnimationGroup()
-        animationGroup.animations = [opacityAnimation, transformAnimation]
-        animationGroup.duration = duration
-        animationGroup.timingFunction = timingFunction
-        animationGroup.fillMode = .removed
-        animationGroup.isRemovedOnCompletion = true
+        let currentScale = layer.presentation()?.value(forKeyPath: "transform.scale") as? CGFloat ?? 1
+        let scaleAnimation = CABasicAnimation(keyPath: "transform.scale")
+        scaleAnimation.fromValue = currentScale
+        scaleAnimation.toValue = Self.closingScale
+        scaleAnimation.duration = Self.fadeOutDuration
+        scaleAnimation.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
 
         CATransaction.begin()
         CATransaction.setDisableActions(true)
-        layer.opacity = opacity
-        layer.transform = targetTransform
+        layer.transform = CATransform3DMakeScale(Self.closingScale, Self.closingScale, 1)
         CATransaction.commit()
-        layer.add(animationGroup, forKey: "menuBarPanelScale")
+        layer.add(scaleAnimation, forKey: "menuBarPanelScaleOut")
 
         NSAnimationContext.runAnimationGroup { context in
-            context.duration = duration
-            context.timingFunction = timingFunction
-            animator().alphaValue = CGFloat(opacity)
+            context.duration = Self.fadeOutDuration
+            context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+            animator().alphaValue = 0
         } completionHandler: {
             Task { @MainActor in
                 completion?()
             }
         }
+    }
+
+    private func configuredContentLayer() -> CALayer? {
+        guard let contentView else {
+            return nil
+        }
+
+        contentView.wantsLayer = true
+        guard let layer = contentView.layer else {
+            return nil
+        }
+
+        let bounds = contentView.bounds
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        layer.anchorPoint = CGPoint(x: 0.5, y: 1)
+        layer.position = CGPoint(x: bounds.midX, y: bounds.maxY)
+        layer.masksToBounds = false
+        CATransaction.commit()
+
+        return layer
     }
 }
