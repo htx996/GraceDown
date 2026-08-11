@@ -384,9 +384,11 @@ private final class MenuBarMonitorPanel: NSPanel {
     private static let screenPadding: CGFloat = 8
     private static let statusItemSpacing: CGFloat = 7
     private static let fadeInDuration: TimeInterval = 0.12
-    private static let fadeOutDuration: TimeInterval = 0.10
-    private static let initialScale: CGFloat = 0.94
-    private static let closingScale: CGFloat = 0.985
+    private static let fadeOutDuration: TimeInterval = 0.12
+    private static let initialScale: CGFloat = 0.12
+    private static let closingScale: CGFloat = 0.12
+
+    private var animationAnchorPoint = CGPoint(x: 0.5, y: 1)
 
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { false }
@@ -436,20 +438,33 @@ private final class MenuBarMonitorPanel: NSPanel {
         }
 
         setFrameOrigin(NSPoint(x: x, y: y))
+        updateAnimationAnchor(buttonRectOnScreen: buttonRectOnScreen, panelOrigin: NSPoint(x: x, y: y), panelSize: size)
     }
 
     func showWithScaleAnimation() {
+        hasShadow = false
         prepareContentLayer(scale: Self.initialScale)
         alphaValue = 0
         orderFrontRegardless()
 
-        animateContentIn()
+        animateContentIn { [weak self] in
+            self?.hasShadow = true
+            self?.invalidateShadow()
+        }
     }
 
     func closeWithScaleAnimation() {
+        hasShadow = false
         animateContentOut { [weak self] in
             self?.close()
         }
+    }
+
+    private func updateAnimationAnchor(buttonRectOnScreen: NSRect, panelOrigin: NSPoint, panelSize: NSSize) {
+        let iconCenter = NSPoint(x: buttonRectOnScreen.midX, y: buttonRectOnScreen.midY)
+        let anchorX = Self.clamped((iconCenter.x - panelOrigin.x) / panelSize.width, lower: 0, upper: 1)
+        let anchorY = Self.clamped((iconCenter.y - panelOrigin.y) / panelSize.height, lower: -0.25, upper: 1.25)
+        animationAnchorPoint = CGPoint(x: anchorX, y: anchorY)
     }
 
     private func prepareContentLayer(scale: CGFloat) {
@@ -465,20 +480,18 @@ private final class MenuBarMonitorPanel: NSPanel {
         CATransaction.commit()
     }
 
-    private func animateContentIn() {
+    private func animateContentIn(completion: (@MainActor @Sendable () -> Void)? = nil) {
         guard let layer = configuredContentLayer() else {
             alphaValue = 1
+            completion?()
             return
         }
 
-        let scaleAnimation = CASpringAnimation(keyPath: "transform.scale")
+        let scaleAnimation = CABasicAnimation(keyPath: "transform.scale")
         scaleAnimation.fromValue = Self.initialScale
         scaleAnimation.toValue = 1
-        scaleAnimation.mass = 0.8
-        scaleAnimation.stiffness = 340
-        scaleAnimation.damping = 30
-        scaleAnimation.initialVelocity = 0
-        scaleAnimation.duration = min(scaleAnimation.settlingDuration, 0.28)
+        scaleAnimation.duration = 0.18
+        scaleAnimation.timingFunction = CAMediaTimingFunction(controlPoints: 0.16, 0.88, 0.22, 1)
 
         CATransaction.begin()
         CATransaction.setDisableActions(true)
@@ -490,6 +503,10 @@ private final class MenuBarMonitorPanel: NSPanel {
             context.duration = Self.fadeInDuration
             context.timingFunction = CAMediaTimingFunction(name: .easeOut)
             animator().alphaValue = 1
+        } completionHandler: {
+            Task { @MainActor in
+                completion?()
+            }
         }
     }
 
@@ -537,11 +554,18 @@ private final class MenuBarMonitorPanel: NSPanel {
         let bounds = contentView.bounds
         CATransaction.begin()
         CATransaction.setDisableActions(true)
-        layer.anchorPoint = CGPoint(x: 0.5, y: 1)
-        layer.position = CGPoint(x: bounds.midX, y: bounds.maxY)
+        layer.anchorPoint = animationAnchorPoint
+        layer.position = CGPoint(
+            x: bounds.width * animationAnchorPoint.x,
+            y: bounds.height * animationAnchorPoint.y
+        )
         layer.masksToBounds = false
         CATransaction.commit()
 
         return layer
+    }
+
+    private static func clamped(_ value: CGFloat, lower: CGFloat, upper: CGFloat) -> CGFloat {
+        min(max(value, lower), upper)
     }
 }
