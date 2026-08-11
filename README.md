@@ -1,77 +1,112 @@
 # GraceDown
 
-GraceDown is a macOS menu bar UPS monitor for setups where the UPS is connected
-to a NAS instead of directly to the Mac. It reads UPS data from Network UPS
-Tools (NUT), shows live status in the macOS menu bar, and can request macOS
-shutdown when configured power conditions are met.
+GraceDown 是一款 macOS 菜单栏 UPS 在线监控工具，适合 UPS 接在 NAS 上、Mac 通过局域网读取 UPS 状态的使用场景。
 
-The original target setup is a UPS connected by USB to a UGREEN NAS, with the
-Mac reading UPS status from the NAS NUT service.
+它可以通过 Network UPS Tools（NUT）读取 UPS 信息，在菜单栏显示电量、供电状态、剩余时间、输入电压和负载，并可在满足条件后请求 macOS 自动关机。
 
-## Features
+## 主要功能
 
-- macOS menu bar UPS status panel
-- NAS NUT and local UPS source modes
-- Battery percentage, runtime, voltage, load, and power-state display
-- Optional automatic macOS shutdown rules
-- Multi-condition shutdown triggers
-- Right-click menu bar actions
-- GitHub Release based update check
+- macOS 菜单栏 UPS 状态面板
+- 支持 NAS NUT 和本机 UPS 两种数据来源
+- 显示 UPS 电量、剩余时间、输入电压、负载和供电状态
+- 支持自动关机规则
+- 支持多个关机触发条件
+- 支持右键菜单栏快捷操作
+- 支持通过 GitHub Release 检查新版本
 
-## Run Locally
+## 适用场景
+
+典型使用方式：
+
+1. UPS 通过 USB 接到 NAS。
+2. NAS 开启 NUT 服务。
+3. GraceDown 在 Mac 上通过局域网连接 NAS NUT 服务。
+4. Mac 根据 UPS 状态显示信息，并在配置条件满足后执行关机请求。
+
+## 本地运行
 
 ```bash
 ./script/build_and_run.sh
 ```
 
-The app is menu-bar-first. It keeps running in the background and can hide the
-Dock icon after user windows are closed.
+GraceDown 以菜单栏为主。关闭设置窗口后，应用仍会在后台运行，并保留菜单栏图标。
 
-## Build
+## 编译
 
 ```bash
 swift build --product UPSPowerMonitor
 ```
 
-To generate the distributable app bundle:
+生成 macOS 应用包：
 
 ```bash
 ./script/build_and_run.sh bundle
 ```
 
-The release DMG is created manually from `dist/GraceDown.app`.
+生成的应用位于：
 
-## NAS UPS Mode
+```text
+dist/GraceDown.app
+```
 
-Open GraceDown settings and configure:
+## 生成安装包
 
-- NAS address: your NAS LAN IP or hostname
-- NUT port: usually `3493`
-- UPS name: leave blank to use the first UPS returned by the NAS
-- Username/password: optional, only required if the NUT service requires it
+项目使用本地脚本生成 `.app`，再将 `.app` 打包为 `.dmg` 发布。
 
-macOS may ask whether GraceDown can access devices on the local network. Allow
-this permission so GraceDown can connect to the NAS NUT service.
+当前发布包包含：
 
-GraceDown reads UPS state from the NAS and can request macOS shutdown when the
-UPS state, battery level, runtime, or low-battery signal matches the configured
-rules. Automatic shutdown is disabled by default and must be explicitly enabled
-in settings.
+- `GraceDown.app`
+- `Applications` 快捷方式
+- SHA256 校验文件
 
-The shutdown command uses macOS System Events through AppleScript. macOS may ask
-for Automation permission the first time it runs.
+## NAS NUT 设置
 
-## Update Check
+打开 GraceDown 设置页后，配置以下内容：
 
-The menu bar right-click menu includes **检查更新**. It checks the latest GitHub
-Release by following:
+- NAS 地址：NAS 的局域网 IP 或主机名
+- NUT 端口：通常为 `3493`
+- UPS 名称：留空时自动使用 NAS 返回的第一个 UPS
+- 用户名和密码：仅在 NUT 服务启用认证时填写
+
+首次连接局域网设备时，macOS 可能会提示是否允许 GraceDown 访问本地网络。请允许该权限，否则 GraceDown 无法连接 NAS NUT 服务。
+
+## 自动关机
+
+GraceDown 可以根据以下条件请求 macOS 关机：
+
+- UPS 切换到电池供电
+- UPS 回到市电供电
+- UPS 电池已充满
+- UPS 电量低于指定比例
+- UPS 剩余时间低于指定时长
+- UPS 自身发出低电量信号
+
+自动关机默认关闭，需要在设置页手动启用。触发条件持续达到设定时间后，GraceDown 会请求 macOS 关机。
+
+关机请求通过 macOS System Events 和 AppleScript 执行。首次执行时，macOS 可能会要求授予自动化权限。
+
+## 菜单栏操作
+
+左键点击菜单栏图标可打开 UPS 状态面板。
+
+右键点击菜单栏图标可打开快捷菜单：
+
+- 设置
+- 运行诊断
+- 关于 GraceDown
+- 检查更新
+- 退出 GraceDown
+
+## 检查更新
+
+GraceDown 通过 GitHub Release 检查新版本：
 
 ```text
 https://github.com/htx996/GraceDown/releases/latest
 ```
 
-This avoids unauthenticated GitHub API rate limits.
+## 开源协议
 
-## License
+本项目使用 Apache License 2.0 开源协议。
 
-Apache License 2.0. See [LICENSE](LICENSE).
+Copyright 2026 Han

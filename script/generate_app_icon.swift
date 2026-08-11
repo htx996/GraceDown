@@ -4,8 +4,8 @@ import Foundation
 
 let rootURL = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
 let resourcesURL = rootURL.appendingPathComponent("Resources", isDirectory: true)
-let artworkURL = rootURL.appendingPathComponent("design/original-dark-green-wave/recovered-1.0.12-1024.png")
-let statusTemplateSourceURL = rootURL.appendingPathComponent("design/original-dark-green-wave/recovered-1.0.12-statusbar-template.png")
+let artworkURL = rootURL.appendingPathComponent("design/icon-reference/app-icon-source.png")
+let statusTemplateSourceURL = rootURL.appendingPathComponent("design/icon-reference/statusbar-template.png")
 let referenceURL = resourcesURL.appendingPathComponent("AppIconReference.png")
 let originalURL = resourcesURL.appendingPathComponent("AppIconOriginal.png")
 let sourceURL = resourcesURL.appendingPathComponent("AppIconSource.png")

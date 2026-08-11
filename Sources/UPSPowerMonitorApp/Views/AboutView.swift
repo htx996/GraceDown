@@ -8,7 +8,7 @@ struct AboutView: View {
             BatteryLogoView(size: 104)
 
             VStack(spacing: 10) {
-                Text("Version 1.0.21")
+                Text("Version \(appVersion)")
                     .font(.system(size: 18))
                     .foregroundStyle(.primary)
 
@@ -26,5 +26,15 @@ struct AboutView: View {
         .padding(.horizontal, 48)
         .padding(.vertical, 30)
         .frame(width: 520, height: 360)
+    }
+
+    private var appVersion: String {
+        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.1.0"
+        let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String
+        guard let build, !build.isEmpty else {
+            return version
+        }
+
+        return "\(version) (\(build))"
     }
 }
