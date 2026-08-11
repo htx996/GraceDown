@@ -1,0 +1,12 @@
+.build/
+dist/
+.DS_Store
+.codex/
+.swiftpm/
+*.xcuserdata
+Resources/AppIcon.iconset/
+design/**
+!design/
+!design/original-dark-green-wave/
+!design/original-dark-green-wave/recovered-1.0.12-1024.png
+!design/original-dark-green-wave/recovered-1.0.12-statusbar-template.png
