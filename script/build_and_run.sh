@@ -6,6 +6,8 @@ APP_NAME="GraceDown"
 PRODUCT_NAME="UPSPowerMonitor"
 BUNDLE_ID="com.han.UPSPowerMonitor"
 MIN_SYSTEM_VERSION="14.0"
+APP_VERSION="1.0.29"
+APP_BUILD="2026081127"
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DIST_DIR="$ROOT_DIR/dist"
@@ -56,9 +58,9 @@ cat >"$INFO_PLIST" <<PLIST
   <key>CFBundlePackageType</key>
   <string>APPL</string>
   <key>CFBundleShortVersionString</key>
-  <string>1.0.28</string>
+  <string>$APP_VERSION</string>
   <key>CFBundleVersion</key>
-  <string>2026081126</string>
+  <string>$APP_BUILD</string>
   <key>LSMinimumSystemVersion</key>
   <string>$MIN_SYSTEM_VERSION</string>
   <key>LSUIElement</key>
@@ -70,6 +72,9 @@ cat >"$INFO_PLIST" <<PLIST
 </dict>
 </plist>
 PLIST
+
+xattr -cr "$APP_BUNDLE" >/dev/null 2>&1 || true
+codesign --force --deep --sign - "$APP_BUNDLE"
 
 open_app() {
   /usr/bin/open -n "$APP_BUNDLE"
