@@ -85,7 +85,7 @@ struct MonitorPopoverView: View {
     private var footer: some View {
         HStack(alignment: .center, spacing: 10) {
             DiagnosticStatusView(
-                title: "NAS 诊断",
+                title: "UPS 诊断",
                 status: diagnosticStateText,
                 detail: diagnosticDetailText,
                 color: diagnosticStateColor
