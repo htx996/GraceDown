@@ -6,8 +6,9 @@ APP_NAME="GraceDown"
 PRODUCT_NAME="UPSPowerMonitor"
 BUNDLE_ID="com.han.UPSPowerMonitor"
 MIN_SYSTEM_VERSION="14.0"
-APP_VERSION="0.1.3"
-APP_BUILD="2026081336"
+APP_VERSION="${APP_VERSION:-0.1.4}"
+APP_BUILD="${APP_BUILD:-$(date +%Y%m%d%H%M)}"
+BUILD_CONFIGURATION="${BUILD_CONFIGURATION:-release}"
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DIST_DIR="$ROOT_DIR/dist"
@@ -23,8 +24,8 @@ STATUS_BAR_ICON="$ROOT_DIR/Resources/StatusBarIconTemplate.png"
 pkill -x "$APP_NAME" >/dev/null 2>&1 || true
 pkill -x "$PRODUCT_NAME" >/dev/null 2>&1 || true
 
-swift build --product "$PRODUCT_NAME"
-BUILD_BIN_DIR="$(swift build --show-bin-path)"
+swift build -c "$BUILD_CONFIGURATION" --product "$PRODUCT_NAME"
+BUILD_BIN_DIR="$(swift build -c "$BUILD_CONFIGURATION" --show-bin-path)"
 BUILD_BINARY="$BUILD_BIN_DIR/$PRODUCT_NAME"
 
 rm -rf "$APP_BUNDLE"

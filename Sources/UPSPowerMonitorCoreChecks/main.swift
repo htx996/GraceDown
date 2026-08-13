@@ -245,6 +245,45 @@ private final class CheckRunner {
         expectEqual(ignored.action, .none, "on-battery condition can be disabled")
     }
 
+    func shutdownPolicyCanTriggerOnConnectionLoss() {
+        let rules = ShutdownRules(
+            isEnabled: true,
+            lowBatteryPercent: 20,
+            lowRuntimeMinutes: 10,
+            gracePeriodSeconds: 30,
+            triggerOnLowBatteryPercent: false,
+            triggerOnLowRuntime: false,
+            statusConditions: [],
+            triggerOnLowBatterySignal: false,
+            triggerOnConnectionLoss: true
+        )
+        var evaluator = ShutdownEvaluator()
+        let start = Date(timeIntervalSince1970: 3_500)
+
+        let pending = evaluator.evaluateConnectionLoss(rules: rules, now: start)
+        expectEqual(pending.action, .wait, "connection-loss shutdown should wait")
+        expectEqual(pending.reason, "NAS NUT 连接中断", "connection-loss shutdown reason")
+        expectEqual(pending.secondsRemaining, 30, "connection-loss grace countdown")
+
+        let execute = evaluator.evaluateConnectionLoss(rules: rules, now: start.addingTimeInterval(31))
+        expectEqual(execute.action, .executeShutdown, "connection-loss shutdown should execute after grace period")
+
+        let disabledRules = ShutdownRules(
+            isEnabled: true,
+            lowBatteryPercent: 20,
+            lowRuntimeMinutes: 10,
+            gracePeriodSeconds: 30,
+            triggerOnLowBatteryPercent: false,
+            triggerOnLowRuntime: false,
+            statusConditions: [],
+            triggerOnLowBatterySignal: false,
+            triggerOnConnectionLoss: false
+        )
+        var disabledEvaluator = ShutdownEvaluator()
+        let ignored = disabledEvaluator.evaluateConnectionLoss(rules: disabledRules, now: start)
+        expectEqual(ignored.action, .none, "connection-loss condition can be disabled")
+    }
+
     func shutdownPolicyCanMatchSingleOrMultiplePowerStatuses() {
         let chargedSnapshot = requireSnapshot(PowerSourceSnapshot(dictionary: [
             "Name": "NAS UPS",
@@ -397,6 +436,7 @@ runner.mapsNUTVariablesToSnapshot()
 runner.chargedUPSPowerSupplyStillShowsACPower()
 runner.shutdownPolicyWaitsForGraceAndCancelsOnRecovery()
 runner.shutdownPolicyCanTriggerWhenUPSIsOnBatteryPower()
+runner.shutdownPolicyCanTriggerOnConnectionLoss()
 runner.shutdownPolicyCanMatchSingleOrMultiplePowerStatuses()
 runner.shutdownPolicyCanDisableBatteryPercentAndRuntimeConditions()
 runner.disabledShutdownPolicyNeverTriggers()

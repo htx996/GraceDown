@@ -9,6 +9,7 @@ public struct ShutdownRules: Equatable, Sendable {
     public let triggerOnLowRuntime: Bool
     public let statusConditions: Set<PowerSourceStatus>
     public let triggerOnLowBatterySignal: Bool
+    public let triggerOnConnectionLoss: Bool
 
     public var triggerOnBatteryPower: Bool {
         statusConditions.contains(.onBattery)
@@ -22,7 +23,8 @@ public struct ShutdownRules: Equatable, Sendable {
         triggerOnLowBatteryPercent: Bool = true,
         triggerOnLowRuntime: Bool = true,
         triggerOnBatteryPower: Bool = true,
-        triggerOnLowBatterySignal: Bool
+        triggerOnLowBatterySignal: Bool,
+        triggerOnConnectionLoss: Bool = true
     ) {
         self.isEnabled = isEnabled
         self.lowBatteryPercent = lowBatteryPercent
@@ -32,6 +34,7 @@ public struct ShutdownRules: Equatable, Sendable {
         self.triggerOnLowRuntime = triggerOnLowRuntime
         self.statusConditions = triggerOnBatteryPower ? [.onBattery] : []
         self.triggerOnLowBatterySignal = triggerOnLowBatterySignal
+        self.triggerOnConnectionLoss = triggerOnConnectionLoss
     }
 
     public init(
@@ -42,7 +45,8 @@ public struct ShutdownRules: Equatable, Sendable {
         triggerOnLowBatteryPercent: Bool = true,
         triggerOnLowRuntime: Bool = true,
         statusConditions: Set<PowerSourceStatus>,
-        triggerOnLowBatterySignal: Bool
+        triggerOnLowBatterySignal: Bool,
+        triggerOnConnectionLoss: Bool = true
     ) {
         self.isEnabled = isEnabled
         self.lowBatteryPercent = lowBatteryPercent
@@ -52,6 +56,7 @@ public struct ShutdownRules: Equatable, Sendable {
         self.triggerOnLowRuntime = triggerOnLowRuntime
         self.statusConditions = statusConditions
         self.triggerOnLowBatterySignal = triggerOnLowBatterySignal
+        self.triggerOnConnectionLoss = triggerOnConnectionLoss
     }
 }
 
@@ -91,21 +96,44 @@ public struct ShutdownEvaluator: Sendable {
         }
 
         guard let snapshot, let reason = triggerReason(for: snapshot, rules: rules) else {
-            if pendingSince != nil || didExecuteForCurrentEvent {
-                reset()
-                return ShutdownDecision(action: .cancel)
-            }
+            return cancelPendingConditionIfNeeded()
+        }
 
+        return evaluateTrigger(reason: reason, gracePeriodSeconds: rules.gracePeriodSeconds, now: now)
+    }
+
+    public mutating func evaluateConnectionLoss(
+        rules: ShutdownRules,
+        now: Date
+    ) -> ShutdownDecision {
+        guard rules.isEnabled else {
+            reset()
             return ShutdownDecision(action: .none)
         }
 
+        guard rules.triggerOnConnectionLoss else {
+            return cancelPendingConditionIfNeeded()
+        }
+
+        return evaluateTrigger(
+            reason: "NAS NUT 连接中断",
+            gracePeriodSeconds: rules.gracePeriodSeconds,
+            now: now
+        )
+    }
+
+    private mutating func evaluateTrigger(
+        reason: String,
+        gracePeriodSeconds: Int,
+        now: Date
+    ) -> ShutdownDecision {
         if pendingSince == nil {
             pendingSince = now
             didExecuteForCurrentEvent = false
         }
 
         let elapsed = Int(now.timeIntervalSince(pendingSince ?? now))
-        if elapsed >= rules.gracePeriodSeconds {
+        if elapsed >= gracePeriodSeconds {
             if didExecuteForCurrentEvent {
                 return ShutdownDecision(action: .none, reason: reason)
             }
@@ -117,8 +145,17 @@ public struct ShutdownEvaluator: Sendable {
         return ShutdownDecision(
             action: .wait,
             reason: reason,
-            secondsRemaining: rules.gracePeriodSeconds - elapsed
+            secondsRemaining: gracePeriodSeconds - elapsed
         )
+    }
+
+    private mutating func cancelPendingConditionIfNeeded() -> ShutdownDecision {
+        if pendingSince != nil || didExecuteForCurrentEvent {
+            reset()
+            return ShutdownDecision(action: .cancel)
+        }
+
+        return ShutdownDecision(action: .none)
     }
 
     private mutating func reset() {

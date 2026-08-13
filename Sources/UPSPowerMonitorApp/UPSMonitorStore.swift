@@ -19,6 +19,7 @@ final class UPSMonitorStore: ObservableObject {
     private var refreshTask: Task<Void, Never>?
     private var shutdownTask: Task<Void, Never>?
     private var lastRefreshAttempt: Date?
+    private var lastDetectedNetworkSourceKey: String?
     private var shutdownEvaluator = ShutdownEvaluator()
 
     init(
@@ -33,7 +34,7 @@ final class UPSMonitorStore: ObservableObject {
         refresh()
 
         if timer == nil {
-            timer = Timer.scheduledTimer(withTimeInterval: 5, repeats: true) { [weak self] _ in
+            timer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
                 Task { @MainActor in
                     self?.refreshIfNeeded()
                 }
@@ -82,13 +83,14 @@ final class UPSMonitorStore: ObservableObject {
                     self.errorMessage = nil
                     self.snapshots = snapshots
                     self.selectedUPS = snapshots.first { $0.kind == .ups }
+                    if self.selectedUPS != nil, configuration.connectionMode == .networkNUT {
+                        self.lastDetectedNetworkSourceKey = Self.networkSourceKey(for: configuration.networkUPS)
+                    }
+                    self.evaluateShutdownPolicy()
                 case .failure(let error):
                     self.errorMessage = error.localizedDescription
-                    self.snapshots = []
-                    self.selectedUPS = nil
+                    self.evaluateShutdownPolicyForConnectionLoss(configuration: configuration)
                 }
-
-                self.evaluateShutdownPolicy()
             }
         }
     }
@@ -167,6 +169,9 @@ final class UPSMonitorStore: ObservableObject {
         if rules.triggerOnLowBatterySignal {
             conditions.append("低电量")
         }
+        if rules.triggerOnConnectionLoss, preferences.connectionMode == .networkNUT {
+            conditions.append("连接中断")
+        }
 
         return conditions.isEmpty ? "未选择" : conditions.joined(separator: " / ")
     }
@@ -196,6 +201,9 @@ final class UPSMonitorStore: ObservableObject {
         }
         if rules.triggerOnLowBatterySignal {
             conditions.append("UPS 低电量信号")
+        }
+        if rules.triggerOnConnectionLoss, preferences.connectionMode == .networkNUT {
+            conditions.append("NAS NUT 连接中断")
         }
 
         let conditionText = conditions.isEmpty ? "未选择关机条件" : conditions.joined(separator: " 或 ")
@@ -235,6 +243,36 @@ final class UPSMonitorStore: ObservableObject {
             rules: preferences.configuration.shutdownRules,
             now: Date()
         )
+        handleShutdownDecision(decision)
+    }
+
+    private func evaluateShutdownPolicyForConnectionLoss(configuration: UPSMonitorConfiguration) {
+        guard configuration.connectionMode == .networkNUT else {
+            evaluateShutdownPolicy()
+            return
+        }
+
+        guard lastDetectedNetworkSourceKey == Self.networkSourceKey(for: configuration.networkUPS) else {
+            evaluateShutdownPolicy()
+            return
+        }
+
+        let decision = shutdownEvaluator.evaluateConnectionLoss(
+            rules: preferences.configuration.shutdownRules,
+            now: Date()
+        )
+        handleShutdownDecision(decision)
+    }
+
+    private static func networkSourceKey(for configuration: NetworkUPSConfiguration) -> String {
+        [
+            configuration.host.lowercased(),
+            String(configuration.port),
+            configuration.upsName.lowercased()
+        ].joined(separator: ":")
+    }
+
+    private func handleShutdownDecision(_ decision: ShutdownDecision) {
         shutdownDecision = decision
 
         switch decision.action {

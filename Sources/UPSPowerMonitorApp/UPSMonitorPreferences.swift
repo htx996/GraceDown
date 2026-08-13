@@ -86,6 +86,10 @@ final class UPSMonitorPreferences: ObservableObject {
         didSet { defaults.set(triggerOnLowBatterySignal, forKey: Keys.triggerOnLowBatterySignal) }
     }
 
+    @Published var triggerOnConnectionLoss: Bool {
+        didSet { defaults.set(triggerOnConnectionLoss, forKey: Keys.triggerOnConnectionLoss) }
+    }
+
     private let defaults: UserDefaults
 
     init(defaults: UserDefaults = .standard) {
@@ -107,6 +111,7 @@ final class UPSMonitorPreferences: ObservableObject {
         self.shutdownGracePeriodSeconds = Self.int(defaults, Keys.shutdownGracePeriodSeconds, defaultValue: 60)
         self.shutdownStatusConditions = Self.statusConditions(defaults)
         self.triggerOnLowBatterySignal = defaults.object(forKey: Keys.triggerOnLowBatterySignal) as? Bool ?? true
+        self.triggerOnConnectionLoss = defaults.object(forKey: Keys.triggerOnConnectionLoss) as? Bool ?? true
     }
 
     var configuration: UPSMonitorConfiguration {
@@ -129,7 +134,8 @@ final class UPSMonitorPreferences: ObservableObject {
                 triggerOnLowBatteryPercent: triggerOnLowBatteryPercent,
                 triggerOnLowRuntime: triggerOnLowRuntime,
                 statusConditions: shutdownStatusConditions,
-                triggerOnLowBatterySignal: triggerOnLowBatterySignal
+                triggerOnLowBatterySignal: triggerOnLowBatterySignal,
+                triggerOnConnectionLoss: triggerOnConnectionLoss
             )
         )
     }
@@ -176,5 +182,6 @@ final class UPSMonitorPreferences: ObservableObject {
         static let shutdownStatusConditions = "shutdownStatusConditions"
         static let triggerOnBatteryPower = "triggerOnBatteryPower"
         static let triggerOnLowBatterySignal = "triggerOnLowBatterySignal"
+        static let triggerOnConnectionLoss = "triggerOnConnectionLoss"
     }
 }

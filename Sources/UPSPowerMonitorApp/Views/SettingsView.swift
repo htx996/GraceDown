@@ -158,6 +158,14 @@ struct SettingsView: View {
                             subtitle: "响应 UPS 自身的 LB 状态",
                             isOn: $preferences.triggerOnLowBatterySignal
                         )
+
+                        SettingsDivider()
+
+                        SettingsToggleRow(
+                            title: "连接中断保护",
+                            subtitle: "NAS NUT 失联时按断电风险处理",
+                            isOn: $preferences.triggerOnConnectionLoss
+                        )
                     }
                     .frame(width: 435, alignment: .top)
                 }
