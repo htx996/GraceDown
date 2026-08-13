@@ -21,7 +21,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         SettingsWindowPresenter.shared.configure(preferences: preferences, store: store)
         StatusBarController.shared.configure(store: store)
         store.start()
-        SettingsWindowPresenter.shared.show()
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {

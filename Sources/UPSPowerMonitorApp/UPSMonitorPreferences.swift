@@ -120,7 +120,7 @@ final class UPSMonitorPreferences: ObservableObject {
                 password: password,
                 timeoutSeconds: 4
             ),
-            pollIntervalSeconds: TimeInterval(clamped(pollIntervalSeconds, 5, 300)),
+            pollIntervalSeconds: TimeInterval(clamped(pollIntervalSeconds, 1, 300)),
             shutdownRules: ShutdownRules(
                 isEnabled: autoShutdownEnabled,
                 lowBatteryPercent: clamped(lowBatteryPercent, 1, 100),

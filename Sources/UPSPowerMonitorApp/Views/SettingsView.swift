@@ -87,8 +87,8 @@ struct SettingsView: View {
                             title: "刷新间隔",
                             subtitle: "菜单栏和弹窗状态更新频率",
                             value: $preferences.pollIntervalSeconds,
-                            range: 5...300,
-                            step: 5,
+                            range: 1...300,
+                            step: 1,
                             suffix: "秒"
                         )
                     }
@@ -162,7 +162,6 @@ struct SettingsView: View {
                     .frame(width: 435, alignment: .top)
                 }
 
-                statusFooter
             }
             .padding(.horizontal, 26)
             .padding(.vertical, 24)
@@ -193,72 +192,42 @@ struct SettingsView: View {
         .padding(.bottom, 4)
     }
 
-    private var statusFooter: some View {
-        HStack(spacing: 14) {
-            Image(systemName: statusIconName)
-                .font(.system(size: 17, weight: .bold))
-                .foregroundStyle(statusColor)
-                .frame(width: 34, height: 34)
-                .background(statusColor.opacity(0.12), in: Circle())
-
-            VStack(alignment: .leading, spacing: 3) {
-                Text("当前状态")
-                    .font(.system(size: 14, weight: .bold))
-                    .foregroundStyle(.primary)
-
-                Text(store.shutdownStatusDescription)
-                    .font(.system(size: 13, weight: .medium))
-                    .foregroundStyle(.secondary)
-                    .lineLimit(2)
-            }
-
-            Spacer()
-
-            Button {
-                store.refresh()
-            } label: {
-                Label("立即刷新", systemImage: "arrow.clockwise")
-            }
-            .buttonStyle(.bordered)
-            .controlSize(.large)
-            .disabled(store.isRefreshing)
-        }
-        .padding(16)
-    }
-
     private var sourceSummary: String {
         switch preferences.connectionMode {
         case .networkNUT:
             let host = preferences.nasHost.trimmingCharacters(in: .whitespacesAndNewlines)
             let address = host.isEmpty ? "未配置 NAS" : "\(host):\(preferences.nasPort)"
-            let upsName = store.selectedUPS?.name ?? "未检测到 UPS"
+            let upsName = detectedUPSName ?? "未检测到 UPS"
             return "\(upsName) · \(address)"
         case .localIOKit:
             return store.selectedUPS?.name ?? "本机 USB/电池电源信息"
         }
     }
 
-    private var shutdownSummary: String {
-        preferences.autoShutdownEnabled ? "已启用 · \(store.shutdownRuleSummary)" : "未启用"
+    private var detectedUPSName: String? {
+        if let selectedUPS = store.selectedUPS,
+           let configuredName = configuredUPSName(from: selectedUPS.sourceDescription) {
+            return configuredName
+        }
+
+        return store.selectedUPS?.name
     }
 
-    private var statusIconName: String {
-        guard let status = store.selectedUPS?.status else {
-            return "exclamationmark.circle.fill"
+    private func configuredUPSName(from source: String?) -> String? {
+        guard let source else {
+            return nil
         }
 
-        switch status {
-        case .onBattery:
-            return "bolt.trianglebadge.exclamationmark.fill"
-        case .charging:
-            return "bolt.fill"
-        case .charged, .onACPower:
-            return "checkmark.circle.fill"
-        case .offline:
-            return "xmark.circle.fill"
-        case .unknown:
-            return "questionmark.circle.fill"
+        guard let separator = source.lastIndex(of: "/"),
+              separator < source.index(before: source.endIndex) else {
+            return nil
         }
+
+        return String(source[source.index(after: separator)...])
+    }
+
+    private var shutdownSummary: String {
+        preferences.autoShutdownEnabled ? "已启用 · \(store.shutdownRuleSummary)" : "未启用"
     }
 
     private var statusColor: Color {

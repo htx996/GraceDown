@@ -209,6 +209,29 @@ public struct PowerSourceSnapshot: Equatable, Identifiable, Sendable {
         return flags.contains("LB") || flags.contains("FSD")
     }
 
+    public var powerSupplyDisplayName: String {
+        let flags = Set(statusFlags.map { $0.uppercased() })
+
+        if flags.contains("OB") || flags.contains("DISCHRG") {
+            return "电池供电"
+        }
+
+        if flags.contains("OL") {
+            return "市电供电"
+        }
+
+        switch status {
+        case .onBattery:
+            return "电池供电"
+        case .onACPower, .charging, .charged:
+            return "市电供电"
+        case .offline:
+            return "已离线"
+        case .unknown:
+            return "未知状态"
+        }
+    }
+
     public var symbolName: String {
         guard let chargePercent else {
             return "battery.0percent"

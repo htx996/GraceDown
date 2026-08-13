@@ -358,7 +358,7 @@ final class StatusBarController: NSObject {
             "连接状态：\(snapshot == nil ? "未连接" : "已连接")",
             "UPS：\(snapshot?.name ?? "-")",
             "来源：\(store.sourceDescription)",
-            "供电状态：\(snapshot?.status.displayName ?? "-")",
+            "供电状态：\(snapshot?.powerSupplyDisplayName ?? "-")",
             "电量：\(snapshot?.chargePercent.map { "\($0)%" } ?? "-")",
             "剩余时间：\(snapshot?.runtimeDescription ?? "-")",
             "最后刷新：\(store.lastRefreshDescription)",

@@ -191,7 +191,7 @@ struct MonitorPopoverView: View {
     }
 
     private var powerStatusText: String {
-        store.selectedUPS?.status.displayName ?? "未连接"
+        store.selectedUPS?.powerSupplyDisplayName ?? "未连接"
     }
 
     private var sourceLine: String {

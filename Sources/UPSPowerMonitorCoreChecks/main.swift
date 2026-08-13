@@ -147,6 +147,22 @@ private final class CheckRunner {
         expectEqual(snapshot.hasLowBatterySignal, true, "NUT low battery signal")
     }
 
+    func chargedUPSPowerSupplyStillShowsACPower() {
+        let snapshot = requireSnapshot(NUTPowerSourceMapper.snapshot(
+            upsName: "ups0",
+            variables: [
+                "ups.status": "OL",
+                "battery.charge": "100",
+                "ups.model": "Back-UPS BK650M2-CH"
+            ],
+            sourceDescription: "192.168.2.86:3493/ups0"
+        ), "charged NUT UPS should map")
+
+        expectEqual(snapshot.status, .charged, "charged NUT status")
+        expectEqual(snapshot.status.displayName, "已充满", "battery status display")
+        expectEqual(snapshot.powerSupplyDisplayName, "市电供电", "charged UPS power supply display")
+    }
+
     func shutdownPolicyWaitsForGraceAndCancelsOnRecovery() {
         let lowBatterySnapshot = requireSnapshot(PowerSourceSnapshot(dictionary: [
             "Name": "NAS UPS",
@@ -378,6 +394,7 @@ runner.capacityPercentageUsesMaxCapacityAndClamps()
 runner.unavailableRuntimeFormatsAsDash()
 runner.parsesNUTUPSListAndVariables()
 runner.mapsNUTVariablesToSnapshot()
+runner.chargedUPSPowerSupplyStillShowsACPower()
 runner.shutdownPolicyWaitsForGraceAndCancelsOnRecovery()
 runner.shutdownPolicyCanTriggerWhenUPSIsOnBatteryPower()
 runner.shutdownPolicyCanMatchSingleOrMultiplePowerStatuses()
