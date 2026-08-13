@@ -51,12 +51,16 @@ dist/GraceDown.app
 
 ## 生成安装包
 
-项目使用本地脚本生成 `.app`，再将 `.app` 打包为 `.dmg` 发布。
+项目使用本地脚本生成 `.app`，再打包为标准 `.dmg` 安装盘：
+
+```bash
+./script/build_and_run.sh dmg
+```
 
 当前发布包包含：
 
 - `GraceDown.app`
-- `Applications` 快捷方式
+- `Applications` 快捷方式，打开 DMG 后将 `GraceDown.app` 拖入该快捷方式即可安装
 - SHA256 校验文件
 
 ## NAS NUT 设置

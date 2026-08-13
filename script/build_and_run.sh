@@ -7,7 +7,7 @@ PRODUCT_NAME="UPSPowerMonitor"
 UPDATER_PRODUCT_NAME="GraceDownUpdater"
 BUNDLE_ID="com.han.UPSPowerMonitor"
 MIN_SYSTEM_VERSION="14.0"
-APP_VERSION="${APP_VERSION:-0.1.5}"
+APP_VERSION="${APP_VERSION:-0.1.6}"
 APP_BUILD="${APP_BUILD:-$(date +%Y%m%d%H%M)}"
 BUILD_CONFIGURATION="${BUILD_CONFIGURATION:-release}"
 
@@ -22,6 +22,9 @@ APP_UPDATER="$APP_MACOS/$UPDATER_PRODUCT_NAME"
 INFO_PLIST="$APP_CONTENTS/Info.plist"
 APP_ICON="$ROOT_DIR/Resources/AppIcon.icns"
 STATUS_BAR_ICON="$ROOT_DIR/Resources/StatusBarIconTemplate.png"
+DMG_ROOT="$DIST_DIR/dmg-root"
+DMG_PATH="$DIST_DIR/$APP_NAME-$APP_VERSION.dmg"
+DMG_CHECKSUM_PATH="$DMG_PATH.sha256"
 
 pkill -x "$APP_NAME" >/dev/null 2>&1 || true
 pkill -x "$PRODUCT_NAME" >/dev/null 2>&1 || true
@@ -86,12 +89,24 @@ PLIST
 xattr -cr "$APP_BUNDLE" >/dev/null 2>&1 || true
 codesign --force --deep --sign - "$APP_BUNDLE"
 
+create_dmg() {
+  rm -rf "$DMG_ROOT"
+  mkdir -p "$DMG_ROOT"
+  cp -R "$APP_BUNDLE" "$DMG_ROOT/$APP_NAME.app"
+  ln -s /Applications "$DMG_ROOT/Applications"
+  hdiutil create -volname "$APP_NAME" -srcfolder "$DMG_ROOT" -ov -format UDZO "$DMG_PATH"
+  shasum -a 256 "$DMG_PATH" > "$DMG_CHECKSUM_PATH"
+}
+
 open_app() {
   /usr/bin/open -n "$APP_BUNDLE"
 }
 
 case "$MODE" in
   bundle)
+    ;;
+  dmg)
+    create_dmg
     ;;
   run)
     open_app
@@ -113,7 +128,7 @@ case "$MODE" in
     pgrep -x "$APP_NAME" >/dev/null
     ;;
   *)
-    echo "usage: $0 [bundle|run|--debug|--logs|--telemetry|--verify]" >&2
+    echo "usage: $0 [bundle|dmg|run|--debug|--logs|--telemetry|--verify]" >&2
     exit 2
     ;;
 esac
