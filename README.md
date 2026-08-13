@@ -12,7 +12,7 @@ GraceDown 是一款 macOS 菜单栏 UPS 在线监控工具，适合 UPS 接在 N
 - 支持自动关机规则
 - 支持多个关机触发条件
 - 支持右键菜单栏快捷操作
-- 支持通过 GitHub Release 检查并下载新版本
+- 支持通过 GitHub Release 检查、下载、校验并自动安装新版本
 
 ## 适用场景
 
@@ -80,6 +80,7 @@ GraceDown 可以根据以下条件请求 macOS 关机：
 - UPS 电量低于指定比例
 - UPS 剩余时间低于指定时长
 - UPS 自身发出低电量信号
+- NAS NUT 连接中断
 
 自动关机默认关闭，需要在设置页手动启用。触发条件持续达到设定时间后，GraceDown 会请求 macOS 关机。
 
@@ -97,9 +98,9 @@ GraceDown 可以根据以下条件请求 macOS 关机：
 - 检查更新
 - 退出 GraceDown
 
-## 检查更新
+## 在线更新
 
-GraceDown 通过 GitHub Release 检查新版本。发现新版后，可直接下载对应 `.dmg` 安装包，并使用随包发布的 SHA256 校验文件进行校验。
+GraceDown 通过 GitHub Release 检查新版本。发现新版后，应用会下载对应 `.dmg` 安装包，使用随包发布的 SHA256 校验文件完成校验，然后自动退出、替换 `/Applications/GraceDown.app`，安装完成后重新打开 GraceDown。
 
 ```text
 https://github.com/htx996/GraceDown/releases/latest

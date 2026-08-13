@@ -9,6 +9,7 @@ let package = Package(
     ],
     products: [
         .executable(name: "UPSPowerMonitor", targets: ["UPSPowerMonitorApp"]),
+        .executable(name: "GraceDownUpdater", targets: ["GraceDownUpdater"]),
         .executable(name: "UPSPowerMonitorCoreChecks", targets: ["UPSPowerMonitorCoreChecks"]),
         .library(name: "UPSPowerMonitorCore", targets: ["UPSPowerMonitorCore"])
     ],
@@ -18,6 +19,7 @@ let package = Package(
             name: "UPSPowerMonitorApp",
             dependencies: ["UPSPowerMonitorCore"]
         ),
+        .executableTarget(name: "GraceDownUpdater"),
         .executableTarget(
             name: "UPSPowerMonitorCoreChecks",
             dependencies: ["UPSPowerMonitorCore"]

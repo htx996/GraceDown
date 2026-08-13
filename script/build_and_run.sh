@@ -4,9 +4,10 @@ set -euo pipefail
 MODE="${1:-run}"
 APP_NAME="GraceDown"
 PRODUCT_NAME="UPSPowerMonitor"
+UPDATER_PRODUCT_NAME="GraceDownUpdater"
 BUNDLE_ID="com.han.UPSPowerMonitor"
 MIN_SYSTEM_VERSION="14.0"
-APP_VERSION="${APP_VERSION:-0.1.4}"
+APP_VERSION="${APP_VERSION:-0.1.5}"
 APP_BUILD="${APP_BUILD:-$(date +%Y%m%d%H%M)}"
 BUILD_CONFIGURATION="${BUILD_CONFIGURATION:-release}"
 
@@ -17,21 +18,27 @@ APP_CONTENTS="$APP_BUNDLE/Contents"
 APP_MACOS="$APP_CONTENTS/MacOS"
 APP_RESOURCES="$APP_CONTENTS/Resources"
 APP_BINARY="$APP_MACOS/$APP_NAME"
+APP_UPDATER="$APP_MACOS/$UPDATER_PRODUCT_NAME"
 INFO_PLIST="$APP_CONTENTS/Info.plist"
 APP_ICON="$ROOT_DIR/Resources/AppIcon.icns"
 STATUS_BAR_ICON="$ROOT_DIR/Resources/StatusBarIconTemplate.png"
 
 pkill -x "$APP_NAME" >/dev/null 2>&1 || true
 pkill -x "$PRODUCT_NAME" >/dev/null 2>&1 || true
+pkill -x "$UPDATER_PRODUCT_NAME" >/dev/null 2>&1 || true
 
 swift build -c "$BUILD_CONFIGURATION" --product "$PRODUCT_NAME"
+swift build -c "$BUILD_CONFIGURATION" --product "$UPDATER_PRODUCT_NAME"
 BUILD_BIN_DIR="$(swift build -c "$BUILD_CONFIGURATION" --show-bin-path)"
 BUILD_BINARY="$BUILD_BIN_DIR/$PRODUCT_NAME"
+BUILD_UPDATER="$BUILD_BIN_DIR/$UPDATER_PRODUCT_NAME"
 
 rm -rf "$APP_BUNDLE"
 mkdir -p "$APP_MACOS" "$APP_RESOURCES"
 cp "$BUILD_BINARY" "$APP_BINARY"
+cp "$BUILD_UPDATER" "$APP_UPDATER"
 chmod +x "$APP_BINARY"
+chmod +x "$APP_UPDATER"
 
 if [[ -f "$APP_ICON" ]]; then
   cp "$APP_ICON" "$APP_RESOURCES/AppIcon.icns"

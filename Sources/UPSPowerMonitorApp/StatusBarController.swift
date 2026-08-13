@@ -21,6 +21,7 @@ final class StatusBarController: NSObject {
     private let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
     private let updateChecker = GitHubUpdateChecker(owner: "htx996", repository: "GraceDown")
     private let updateDownloader = UpdateDownloader()
+    private let updateInstaller = UpdateInstaller()
     private var popoverWindow: MenuBarMonitorPanel?
     private var localPopoverEventMonitor: Any?
     private var globalPopoverEventMonitor: Any?
@@ -391,7 +392,7 @@ final class StatusBarController: NSObject {
             alert.messageText = "发现新版本"
             alert.informativeText = "当前版本：\(currentVersion)\n最新版本：\(latestVersion)"
             alert.alertStyle = .informational
-            alert.addButton(withTitle: "立即下载")
+            alert.addButton(withTitle: "立即更新")
             alert.addButton(withTitle: "稍后")
 
             if alert.runModal() == .alertFirstButtonReturn {
@@ -421,14 +422,14 @@ final class StatusBarController: NSObject {
             do {
                 let downloadedURL = try await updateDownloader.download(release)
                 AppActivationController.shared.prepareForUserWindow()
-                NSWorkspace.shared.open(downloadedURL)
                 showAlert(
-                    title: "更新已下载",
-                    message: "GraceDown \(release.version) 安装包已打开。请将新版拖入“应用程序”完成更新。"
+                    title: "准备更新",
+                    message: "GraceDown \(release.version) 已下载并通过校验。点击“好”后应用会退出、自动完成替换，并重新打开。"
                 )
+                try updateInstaller.installAndRelaunch(from: downloadedURL)
             } catch {
                 showAlert(
-                    title: "下载更新",
+                    title: "更新失败",
                     message: error.localizedDescription
                 )
             }
