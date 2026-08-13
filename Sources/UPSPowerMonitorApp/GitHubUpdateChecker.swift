@@ -3,12 +3,21 @@ import Foundation
 struct GitHubLatestRelease: Sendable {
     let tagName: String
     let htmlURL: URL
+    let dmgURL: URL
+    let checksumURL: URL
 }
 
 enum UpdateCheckResult: Sendable {
-    case updateAvailable(currentVersion: String, latestVersion: String, releaseURL: URL)
+    case updateAvailable(currentVersion: String, latestVersion: String, download: GitHubReleaseDownload)
     case upToDate(currentVersion: String, latestVersion: String)
     case noRelease
+}
+
+struct GitHubReleaseDownload: Sendable {
+    let version: String
+    let releaseURL: URL
+    let dmgURL: URL
+    let checksumURL: URL
 }
 
 enum GitHubUpdateCheckerError: LocalizedError {
@@ -40,7 +49,12 @@ struct GitHubUpdateChecker {
             return .updateAvailable(
                 currentVersion: currentVersion,
                 latestVersion: latestVersion,
-                releaseURL: release.htmlURL
+                download: GitHubReleaseDownload(
+                    version: latestVersion,
+                    releaseURL: release.htmlURL,
+                    dmgURL: release.dmgURL,
+                    checksumURL: release.checksumURL
+                )
             )
         }
 
@@ -72,7 +86,13 @@ struct GitHubUpdateChecker {
                 throw GitHubUpdateCheckerError.invalidResponse
             }
 
-            return GitHubLatestRelease(tagName: tagName, htmlURL: finalURL)
+            let version = Self.normalizedVersion(tagName)
+            return GitHubLatestRelease(
+                tagName: tagName,
+                htmlURL: finalURL,
+                dmgURL: releaseAssetURL(tagName: tagName, fileName: "GraceDown-\(version).dmg"),
+                checksumURL: releaseAssetURL(tagName: tagName, fileName: "GraceDown-\(version).dmg.sha256")
+            )
         case 404:
             return nil
         default:
@@ -118,6 +138,10 @@ struct GitHubUpdateChecker {
         }
 
         return components[tagIndex + 1].removingPercentEncoding
+    }
+
+    private func releaseAssetURL(tagName: String, fileName: String) -> URL {
+        URL(string: "https://github.com/\(owner)/\(repository)/releases/download/\(tagName)/\(fileName)")!
     }
 
     private static func versionParts(_ version: String) -> [Int] {

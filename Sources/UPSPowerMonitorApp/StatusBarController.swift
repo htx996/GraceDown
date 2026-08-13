@@ -20,6 +20,7 @@ final class StatusBarController: NSObject {
 
     private let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
     private let updateChecker = GitHubUpdateChecker(owner: "htx996", repository: "GraceDown")
+    private let updateDownloader = UpdateDownloader()
     private var popoverWindow: MenuBarMonitorPanel?
     private var localPopoverEventMonitor: Any?
     private var globalPopoverEventMonitor: Any?
@@ -383,18 +384,18 @@ final class StatusBarController: NSObject {
 
     private func showUpdateResult(_ result: UpdateCheckResult) {
         switch result {
-        case .updateAvailable(let currentVersion, let latestVersion, let releaseURL):
+        case .updateAvailable(let currentVersion, let latestVersion, let download):
             AppActivationController.shared.prepareForUserWindow()
 
             let alert = NSAlert()
             alert.messageText = "发现新版本"
             alert.informativeText = "当前版本：\(currentVersion)\n最新版本：\(latestVersion)"
             alert.alertStyle = .informational
-            alert.addButton(withTitle: "打开 GitHub")
+            alert.addButton(withTitle: "立即下载")
             alert.addButton(withTitle: "稍后")
 
             if alert.runModal() == .alertFirstButtonReturn {
-                NSWorkspace.shared.open(releaseURL)
+                downloadUpdate(download)
             }
 
             AppActivationController.shared.hideDockIconIfNoUserWindows()
@@ -408,6 +409,29 @@ final class StatusBarController: NSObject {
                 title: "检查更新",
                 message: "GitHub 仓库还没有发布 Release。"
             )
+        }
+    }
+
+    private func downloadUpdate(_ release: GitHubReleaseDownload) {
+        Task { [weak self] in
+            guard let self else {
+                return
+            }
+
+            do {
+                let downloadedURL = try await updateDownloader.download(release)
+                AppActivationController.shared.prepareForUserWindow()
+                NSWorkspace.shared.open(downloadedURL)
+                showAlert(
+                    title: "更新已下载",
+                    message: "GraceDown \(release.version) 安装包已打开。请将新版拖入“应用程序”完成更新。"
+                )
+            } catch {
+                showAlert(
+                    title: "下载更新",
+                    message: error.localizedDescription
+                )
+            }
         }
     }
 
