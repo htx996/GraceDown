@@ -548,7 +548,7 @@ private struct ToolIconButtonStyle: ButtonStyle {
             .font(.system(size: 15, weight: .bold))
             .frame(width: 34, height: 34)
             .background(Color(nsColor: .controlBackgroundColor), in: Circle())
-            .foregroundStyle(configuration.role == .destructive ? .red : .secondary)
+            .foregroundStyle(.secondary)
             .opacity(configuration.isPressed ? 0.72 : 1)
             .scaleEffect(configuration.isPressed ? 0.96 : 1)
             .animation(.snappy(duration: 0.12), value: configuration.isPressed)
