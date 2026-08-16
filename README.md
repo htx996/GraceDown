@@ -23,46 +23,6 @@ GraceDown 是一款 macOS 菜单栏 UPS 在线监控工具，适合 UPS 接在 N
 3. GraceDown 在 Mac 上通过局域网连接 NAS NUT 服务。
 4. Mac 根据 UPS 状态显示信息，并在配置条件满足后执行关机请求。
 
-## 本地运行
-
-```bash
-./script/build_and_run.sh
-```
-
-GraceDown 以菜单栏为主。关闭设置窗口后，应用仍会在后台运行，并保留菜单栏图标。
-
-## 编译
-
-```bash
-swift build --product UPSPowerMonitor
-```
-
-生成 macOS 应用包：
-
-```bash
-./script/build_and_run.sh bundle
-```
-
-生成的应用位于：
-
-```text
-dist/GraceDown.app
-```
-
-## 生成安装包
-
-项目使用本地脚本生成 `.app`，再打包为标准 `.dmg` 安装盘：
-
-```bash
-./script/build_and_run.sh dmg
-```
-
-当前发布包包含：
-
-- `GraceDown.app`
-- `Applications` 快捷方式，打开 DMG 后将 `GraceDown.app` 拖入该快捷方式即可安装
-- SHA256 校验文件
-
 ## NAS NUT 设置
 
 打开 GraceDown 设置页后，配置以下内容：
@@ -90,25 +50,6 @@ GraceDown 可以根据以下条件请求 macOS 关机：
 
 关机请求通过 macOS System Events 和 AppleScript 执行。首次执行时，macOS 可能会要求授予自动化权限。
 
-## 菜单栏操作
-
-左键点击菜单栏图标可打开 UPS 状态面板。
-
-右键点击菜单栏图标可打开快捷菜单：
-
-- 设置
-- 运行诊断
-- 关于 GraceDown
-- 检查更新
-- 退出 GraceDown
-
-## 在线更新
-
-GraceDown 通过 GitHub Release 检查新版本。发现新版后，应用会下载对应 `.dmg` 安装包，使用随包发布的 SHA256 校验文件完成校验，然后自动退出、替换 `/Applications/GraceDown.app`，安装完成后重新打开 GraceDown。
-
-```text
-https://github.com/htx996/GraceDown/releases/latest
-```
 
 ## 开源协议
 
