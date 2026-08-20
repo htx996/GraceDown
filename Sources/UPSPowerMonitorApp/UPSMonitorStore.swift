@@ -15,19 +15,27 @@ final class UPSMonitorStore: ObservableObject {
 
     private let preferences: UPSMonitorPreferences
     private let shutdownExecutor: any SystemShutdownExecuting
+    private let notificationController: UPSNotificationController
     private var timer: Timer?
     private var refreshTask: Task<Void, Never>?
     private var shutdownTask: Task<Void, Never>?
     private var lastRefreshAttempt: Date?
     private var lastDetectedNetworkSourceKey: String?
+    private var consecutiveNetworkRefreshFailures = 0
+    private var didNotifyNetworkConnectionLoss = false
+    private var lastPowerSupplyNotificationState: PowerSupplyNotificationState?
+    private var lastKnownNotificationUPSName: String?
+    private var lastKnownNotificationSourceLine: String?
     private var shutdownEvaluator = ShutdownEvaluator()
 
     init(
         preferences: UPSMonitorPreferences,
-        shutdownExecutor: any SystemShutdownExecuting = AppleScriptShutdownExecutor()
+        shutdownExecutor: any SystemShutdownExecuting = AppleScriptShutdownExecutor(),
+        notificationController: UPSNotificationController = .shared
     ) {
         self.preferences = preferences
         self.shutdownExecutor = shutdownExecutor
+        self.notificationController = notificationController
     }
 
     func start() {
@@ -83,12 +91,11 @@ final class UPSMonitorStore: ObservableObject {
                     self.errorMessage = nil
                     self.snapshots = snapshots
                     self.selectedUPS = snapshots.first { $0.kind == .ups }
-                    if self.selectedUPS != nil, configuration.connectionMode == .networkNUT {
-                        self.lastDetectedNetworkSourceKey = Self.networkSourceKey(for: configuration.networkUPS)
-                    }
+                    self.handleRefreshSuccessNotifications(configuration: configuration)
                     self.evaluateShutdownPolicy()
                 case .failure(let error):
                     self.errorMessage = error.localizedDescription
+                    self.handleRefreshFailureNotifications(error: error, configuration: configuration)
                     self.evaluateShutdownPolicyForConnectionLoss(configuration: configuration)
                 }
             }
@@ -272,6 +279,137 @@ final class UPSMonitorStore: ObservableObject {
         ].joined(separator: ":")
     }
 
+    private func handleRefreshSuccessNotifications(configuration: UPSMonitorConfiguration) {
+        if configuration.connectionMode == .networkNUT {
+            let sourceKey = Self.networkSourceKey(for: configuration.networkUPS)
+            let isSameKnownSource = lastDetectedNetworkSourceKey == sourceKey
+
+            if !isSameKnownSource {
+                lastPowerSupplyNotificationState = nil
+                didNotifyNetworkConnectionLoss = false
+            }
+
+            consecutiveNetworkRefreshFailures = 0
+
+            if let selectedUPS {
+                updateLastKnownNotificationDetails(snapshot: selectedUPS, configuration: configuration)
+
+                if didNotifyNetworkConnectionLoss, isSameKnownSource {
+                    notificationController.notifyConnectionRestored(
+                        upsName: notificationUPSName(snapshot: selectedUPS),
+                        sourceLine: notificationSourceLine(snapshot: selectedUPS, configuration: configuration)
+                    )
+                }
+
+                didNotifyNetworkConnectionLoss = false
+                lastDetectedNetworkSourceKey = sourceKey
+            }
+        } else {
+            consecutiveNetworkRefreshFailures = 0
+            didNotifyNetworkConnectionLoss = false
+        }
+
+        guard let selectedUPS else {
+            return
+        }
+
+        notifyPowerSupplyTransitionIfNeeded(snapshot: selectedUPS, configuration: configuration)
+    }
+
+    private func handleRefreshFailureNotifications(error: Error, configuration: UPSMonitorConfiguration) {
+        guard configuration.connectionMode == .networkNUT else {
+            return
+        }
+
+        guard lastDetectedNetworkSourceKey == Self.networkSourceKey(for: configuration.networkUPS) else {
+            return
+        }
+
+        consecutiveNetworkRefreshFailures += 1
+
+        guard consecutiveNetworkRefreshFailures >= 3, !didNotifyNetworkConnectionLoss else {
+            return
+        }
+
+        didNotifyNetworkConnectionLoss = true
+        notificationController.notifyConnectionLost(
+            upsName: lastKnownNotificationUPSName ?? "UPS",
+            sourceLine: lastKnownNotificationSourceLine ?? Self.networkSourceLine(configuration: configuration.networkUPS),
+            errorDescription: error.localizedDescription
+        )
+    }
+
+    private func notifyPowerSupplyTransitionIfNeeded(
+        snapshot: PowerSourceSnapshot,
+        configuration: UPSMonitorConfiguration
+    ) {
+        guard let currentState = PowerSupplyNotificationState(snapshot: snapshot) else {
+            return
+        }
+
+        defer {
+            lastPowerSupplyNotificationState = currentState
+        }
+
+        guard let previousState = lastPowerSupplyNotificationState,
+              previousState != currentState else {
+            return
+        }
+
+        switch currentState {
+        case .battery:
+            notificationController.notifySwitchedToBattery(
+                upsName: notificationUPSName(snapshot: snapshot),
+                sourceLine: notificationSourceLine(snapshot: snapshot, configuration: configuration)
+            )
+        case .utility:
+            guard previousState == .battery else {
+                return
+            }
+            notificationController.notifyUtilityPowerRestored(
+                upsName: notificationUPSName(snapshot: snapshot),
+                sourceLine: notificationSourceLine(snapshot: snapshot, configuration: configuration)
+            )
+        }
+    }
+
+    private func updateLastKnownNotificationDetails(
+        snapshot: PowerSourceSnapshot,
+        configuration: UPSMonitorConfiguration
+    ) {
+        lastKnownNotificationUPSName = notificationUPSName(snapshot: snapshot)
+        lastKnownNotificationSourceLine = notificationSourceLine(snapshot: snapshot, configuration: configuration)
+    }
+
+    private func notificationUPSName(snapshot: PowerSourceSnapshot) -> String {
+        snapshot.name.isEmpty ? "UPS" : snapshot.name
+    }
+
+    private func notificationSourceLine(
+        snapshot: PowerSourceSnapshot,
+        configuration: UPSMonitorConfiguration
+    ) -> String {
+        if let sourceDescription = snapshot.sourceDescription,
+           let separator = sourceDescription.lastIndex(of: "/"),
+           separator < sourceDescription.index(before: sourceDescription.endIndex) {
+            let address = String(sourceDescription[..<separator])
+            let upsName = String(sourceDescription[sourceDescription.index(after: separator)...])
+            return "\(upsName) · \(address)"
+        }
+
+        switch configuration.connectionMode {
+        case .networkNUT:
+            return Self.networkSourceLine(configuration: configuration.networkUPS)
+        case .localIOKit:
+            return "本机 IOKit"
+        }
+    }
+
+    private static func networkSourceLine(configuration: NetworkUPSConfiguration) -> String {
+        let upsName = configuration.upsName.isEmpty ? "UPS" : configuration.upsName
+        return "\(upsName) · \(configuration.host):\(configuration.port)"
+    }
+
     private func handleShutdownDecision(_ decision: ShutdownDecision) {
         shutdownDecision = decision
 
@@ -312,6 +450,34 @@ final class UPSMonitorStore: ObservableObject {
                     self.shutdownCommandMessage = error.localizedDescription
                 }
             }
+        }
+    }
+}
+
+private enum PowerSupplyNotificationState {
+    case battery
+    case utility
+
+    init?(snapshot: PowerSourceSnapshot) {
+        let flags = Set(snapshot.statusFlags.map { $0.uppercased() })
+
+        if flags.contains("OB") || flags.contains("DISCHRG") {
+            self = .battery
+            return
+        }
+
+        if flags.contains("OL") {
+            self = .utility
+            return
+        }
+
+        switch snapshot.status {
+        case .onBattery:
+            self = .battery
+        case .onACPower, .charging, .charged:
+            self = .utility
+        case .offline, .unknown:
+            return nil
         }
     }
 }

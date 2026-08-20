@@ -18,6 +18,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         AppActivationController.shared.configureForMenuBarLaunch()
+        UPSNotificationController.shared.prepare()
         SettingsWindowPresenter.shared.configure(preferences: preferences, store: store)
         StatusBarController.shared.configure(store: store)
         store.start()
