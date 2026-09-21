@@ -3,7 +3,7 @@
 <p align="center">
   <img width="344" height="288"
        alt="截屏2026-09-21 15 23 39"
-       src="https:github.com/user-attachments/assets/20331e9b-d717-4828-8675-8c669e5e060e" />
+       src="https://github.com/user-attachments/assets/20331e9b-d717-4828-8675-8c669e5e060e" />
 </p>
 
 GraceDown 是一款 macOS 菜单栏 UPS 在线监控工具，适合 UPS 接在 NAS 上、Mac 通过局域网读取 UPS 状态的使用场景。
