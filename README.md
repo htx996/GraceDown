@@ -1,4 +1,4 @@
-# GraceDown
+<h1 align="center">GraceDown</h1>
 
 <p align="center">
   <img width="344" height="288"
