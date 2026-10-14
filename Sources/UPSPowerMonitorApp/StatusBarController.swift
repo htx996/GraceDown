@@ -25,6 +25,7 @@ final class StatusBarController: NSObject {
     private var cancellables = Set<AnyCancellable>()
     private var isCheckingForUpdates = false
     private var popoverState = PopoverState.closed
+    private var suppressNextStatusItemOpen = false
 
     func configure(store: UPSMonitorStore) {
         self.store = store
@@ -52,6 +53,13 @@ final class StatusBarController: NSObject {
     }
 
     @objc private func handleStatusItemClick(_ sender: NSStatusBarButton) {
+        if suppressNextStatusItemOpen, popoverState == .closed {
+            suppressNextStatusItemOpen = false
+            return
+        }
+
+        suppressNextStatusItemOpen = false
+
         guard popoverState != .closing else {
             return
         }
@@ -238,7 +246,7 @@ final class StatusBarController: NSObject {
         }
 
         globalPopoverEventMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] _ in
-            self?.closePopover()
+            self?.handleGlobalPopoverMouseDown()
         }
     }
 
@@ -261,6 +269,24 @@ final class StatusBarController: NSObject {
 
         let point = button.convert(event.locationInWindow, from: nil)
         return button.bounds.contains(point)
+    }
+
+    private func handleGlobalPopoverMouseDown() {
+        if screenPointIsInsideStatusButton(NSEvent.mouseLocation) {
+            suppressNextStatusItemOpen = true
+        }
+
+        closePopover()
+    }
+
+    private func screenPointIsInsideStatusButton(_ screenPoint: NSPoint) -> Bool {
+        guard let button = statusItem.button, let window = button.window else {
+            return false
+        }
+
+        let buttonRectInWindow = button.convert(button.bounds, to: nil)
+        let buttonRectOnScreen = window.convertToScreen(buttonRectInWindow)
+        return buttonRectOnScreen.insetBy(dx: -4, dy: -4).contains(screenPoint)
     }
 
     private func showContextMenu(from button: NSStatusBarButton) {
