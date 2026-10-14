@@ -4,6 +4,8 @@ import UPSPowerMonitorCore
 
 struct MonitorPopoverView: View {
     static let preferredWidth: CGFloat = 500
+    static let animationBleed: CGFloat = 36
+    static var preferredWindowWidth: CGFloat { preferredWidth + animationBleed * 2 }
 
     @ObservedObject var store: UPSMonitorStore
     @Environment(\.dismiss) private var dismiss
@@ -24,6 +26,12 @@ struct MonitorPopoverView: View {
     }
 
     var body: some View {
+        card
+            .padding(Self.animationBleed)
+            .background(Color.clear)
+    }
+
+    private var card: some View {
         VStack(spacing: 14) {
             TopStatusCapsule(
                 title: deviceTitle,
@@ -78,7 +86,7 @@ struct MonitorPopoverView: View {
         }
         .padding(14)
         .frame(width: Self.preferredWidth)
-        .background(Color(nsColor: .windowBackgroundColor).opacity(0.88), in: popoverShape)
+        .background(Color(nsColor: .windowBackgroundColor).opacity(0.96), in: popoverShape)
         .clipShape(popoverShape)
     }
 
@@ -357,7 +365,7 @@ private struct BatterySummaryCard: View {
         }
         .padding(18)
         .frame(maxWidth: .infinity, minHeight: 158, alignment: .leading)
-        .background(Color(nsColor: .controlBackgroundColor).opacity(0.92), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .glassCardBackground()
     }
 }
 
@@ -390,7 +398,7 @@ private struct PowerStatusCard: View {
         }
         .padding(18)
         .frame(maxWidth: .infinity, minHeight: 158, alignment: .leading)
-        .background(Color(nsColor: .controlBackgroundColor).opacity(0.92), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .glassCardBackground()
     }
 }
 
@@ -429,7 +437,7 @@ private struct MetricsCard: View {
         }
         .padding(.horizontal, 18)
         .padding(.vertical, 16)
-        .background(Color(nsColor: .controlBackgroundColor).opacity(0.92), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .glassCardBackground()
     }
 }
 
@@ -552,5 +560,13 @@ private struct ToolIconButtonStyle: ButtonStyle {
             .opacity(configuration.isPressed ? 0.72 : 1)
             .scaleEffect(configuration.isPressed ? 0.96 : 1)
             .animation(.snappy(duration: 0.12), value: configuration.isPressed)
+    }
+}
+
+private extension View {
+    func glassCardBackground(cornerRadius: CGFloat = 18) -> some View {
+        let shape = RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+
+        return background(Color(nsColor: .controlBackgroundColor).opacity(0.92), in: shape)
     }
 }

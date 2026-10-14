@@ -448,17 +448,19 @@ final class StatusBarController: NSObject {
 
 @MainActor
 private final class MenuBarMonitorPanel: NSPanel {
-    static let width: CGFloat = MonitorPopoverView.preferredWidth
+    static let width: CGFloat = MonitorPopoverView.preferredWindowWidth
 
     private static let screenPadding: CGFloat = 8
     private static let statusItemSpacing: CGFloat = 7
-    private static let collapsedScale: CGFloat = 0.08
-    private static let openDuration: TimeInterval = 0.18
-    private static let closeDuration: TimeInterval = 0.14
+    private static let animationBleed: CGFloat = MonitorPopoverView.animationBleed
+    private static let materializedScale: CGFloat = 1.045
+    private static let materializedYOffset: CGFloat = 0
+    private static let openSpringMass: CGFloat = 1
+    private static let openSpringStiffness: CGFloat = 235
+    private static let openSpringDamping: CGFloat = 27
 
     private var expandedFrame = NSRect.zero
-    private var collapsedFrame = NSRect.zero
-    private var animationWindow: MenuBarPanelAnimationWindow?
+    private var opensBelowStatusItem = true
 
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { false }
@@ -474,7 +476,7 @@ private final class MenuBarMonitorPanel: NSPanel {
         isFloatingPanel = true
         isReleasedWhenClosed = false
         isOpaque = false
-        hasShadow = true
+        hasShadow = false
         backgroundColor = .clear
         level = .popUpMenu
         animationBehavior = .none
@@ -498,204 +500,98 @@ private final class MenuBarMonitorPanel: NSPanel {
             screenFrame.maxX - size.width - Self.screenPadding
         )
 
-        let belowY = buttonRectOnScreen.minY - size.height - Self.statusItemSpacing
-        let aboveY = buttonRectOnScreen.maxY + Self.statusItemSpacing
+        let belowY = buttonRectOnScreen.minY - size.height + Self.animationBleed - Self.statusItemSpacing
+        let aboveY = buttonRectOnScreen.maxY + Self.statusItemSpacing - Self.animationBleed
         let y: CGFloat
-        let anchorY: CGFloat
         if belowY >= screenFrame.minY + Self.screenPadding {
             y = belowY
-            anchorY = buttonRectOnScreen.minY
+            opensBelowStatusItem = true
         } else {
             y = min(aboveY, screenFrame.maxY - size.height - Self.screenPadding)
-            anchorY = buttonRectOnScreen.maxY
+            opensBelowStatusItem = false
         }
 
         expandedFrame = NSRect(origin: NSPoint(x: x, y: y), size: size)
-        collapsedFrame = Self.collapsedFrame(for: size, anchor: NSPoint(x: buttonRectOnScreen.midX, y: anchorY))
         setFrame(expandedFrame, display: false)
     }
 
     func showWithScaleAnimation(completion: @escaping @MainActor @Sendable () -> Void) {
-        closeAnimationWindow()
-        MenuBarPanelAnimationWindow.closeAll()
-        hasShadow = false
         setFrame(expandedFrame, display: false)
-        alphaValue = 0
+        alphaValue = 1
+        prepareContentLayerForPresentation()
         orderFrontRegardless()
         displayIfNeeded()
 
-        guard let snapshotImage = snapshotImage() else {
-            animateWindow(to: expandedFrame, alpha: 1, duration: Self.openDuration) { [weak self] in
-                self?.hasShadow = true
-                self?.invalidateShadow()
-                completion()
-            }
-            return
-        }
-
-        let animationWindow = MenuBarPanelAnimationWindow(image: snapshotImage, frame: collapsedFrame)
-        self.animationWindow = animationWindow
-        animationWindow.alphaValue = 0.18
-        animationWindow.orderFrontRegardless()
-
-        NSAnimationContext.runAnimationGroup { context in
-            context.duration = Self.openDuration
-            context.allowsImplicitAnimation = true
-            context.timingFunction = CAMediaTimingFunction(controlPoints: 0.18, 0.92, 0.22, 1)
-            animationWindow.animator().setFrame(expandedFrame, display: true)
-            animationWindow.animator().alphaValue = 1
-        } completionHandler: { [weak self, weak animationWindow] in
-            Task { @MainActor in
-                self?.alphaValue = 1
-                self?.hasShadow = true
-                self?.invalidateShadow()
-                if self?.animationWindow === animationWindow {
-                    self?.animationWindow = nil
-                }
-                animationWindow?.close()
-                completion()
-            }
+        animateOpenContentLayer {
+            completion()
         }
     }
 
     func closeWithScaleAnimation(completion: @escaping @MainActor @Sendable () -> Void) {
-        closeAnimationWindow()
-        MenuBarPanelAnimationWindow.closeAll()
-        hasShadow = false
-        guard let snapshotImage = snapshotImage() else {
-            animateWindow(to: collapsedFrame, alpha: 0, duration: Self.closeDuration) { [weak self] in
-                self?.close()
-                completion()
-            }
+        close()
+        completion()
+    }
+
+    private func prepareContentLayerForPresentation() {
+        guard let contentView else {
             return
         }
 
-        let animationWindow = MenuBarPanelAnimationWindow(image: snapshotImage, frame: expandedFrame)
-        self.animationWindow = animationWindow
-        animationWindow.orderFrontRegardless()
-        alphaValue = 0
+        contentView.wantsLayer = true
 
-        NSAnimationContext.runAnimationGroup { context in
-            context.duration = Self.closeDuration
-            context.allowsImplicitAnimation = true
-            context.timingFunction = CAMediaTimingFunction(controlPoints: 0.34, 0.02, 0.78, 0.34)
-            animationWindow.animator().setFrame(collapsedFrame, display: true)
-            animationWindow.animator().alphaValue = 0
-        } completionHandler: { [weak self, weak animationWindow] in
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        contentView.layer?.backgroundColor = NSColor.clear.cgColor
+        contentView.layer?.cornerRadius = 0
+        contentView.layer?.masksToBounds = false
+        contentView.layer?.transform = materializedTransform()
+        contentView.layer?.opacity = 1
+        CATransaction.commit()
+    }
+
+    private func animateOpenContentLayer(completion: @escaping @MainActor @Sendable () -> Void) {
+        guard let layer = contentView?.layer else {
+            completion()
+            return
+        }
+
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        layer.transform = CATransform3DIdentity
+        layer.opacity = 1
+        CATransaction.commit()
+
+        let scaleAnimation = CASpringAnimation(keyPath: "transform.scale")
+        scaleAnimation.fromValue = Self.materializedScale
+        scaleAnimation.toValue = 1
+        scaleAnimation.mass = Self.openSpringMass
+        scaleAnimation.stiffness = Self.openSpringStiffness
+        scaleAnimation.damping = Self.openSpringDamping
+        scaleAnimation.initialVelocity = -0.8
+        scaleAnimation.duration = scaleAnimation.settlingDuration
+        scaleAnimation.isRemovedOnCompletion = true
+
+        CATransaction.begin()
+        CATransaction.setCompletionBlock {
             Task { @MainActor in
-                if self?.animationWindow === animationWindow {
-                    self?.animationWindow = nil
-                }
-                animationWindow?.close()
-                self?.close()
+                CATransaction.begin()
+                CATransaction.setDisableActions(true)
+                layer.transform = CATransform3DIdentity
+                layer.opacity = 1
+                CATransaction.commit()
+
                 completion()
             }
         }
+        layer.add(scaleAnimation, forKey: "gracedown.materialize.scale")
+        CATransaction.commit()
     }
 
-    private func closeAnimationWindow() {
-        animationWindow?.close()
-        animationWindow = nil
-    }
-
-    private static func collapsedFrame(for expandedSize: NSSize, anchor: NSPoint) -> NSRect {
-        let size = NSSize(
-            width: max(1, expandedSize.width * collapsedScale),
-            height: max(1, expandedSize.height * collapsedScale)
-        )
-
-        return NSRect(
-            x: anchor.x - size.width / 2,
-            y: anchor.y - size.height / 2,
-            width: size.width,
-            height: size.height
-        )
-    }
-
-    private func animateWindow(
-        to frame: NSRect,
-        alpha: CGFloat,
-        duration: TimeInterval,
-        completion: @escaping @MainActor @Sendable () -> Void
-    ) {
-        NSAnimationContext.runAnimationGroup { context in
-            context.duration = duration
-            context.allowsImplicitAnimation = true
-            context.timingFunction = CAMediaTimingFunction(controlPoints: 0.18, 0.92, 0.22, 1)
-            animator().setFrame(frame, display: true)
-            animator().alphaValue = alpha
-        } completionHandler: {
-            Task { @MainActor in
-                completion()
-            }
-        }
-    }
-
-    private func snapshotImage() -> NSImage? {
-        guard let contentView else {
-            return nil
-        }
-
-        contentView.layoutSubtreeIfNeeded()
-        contentView.displayIfNeeded()
-
-        let bounds = contentView.bounds
-        guard let bitmap = contentView.bitmapImageRepForCachingDisplay(in: bounds) else {
-            return nil
-        }
-
-        bitmap.size = bounds.size
-        contentView.cacheDisplay(in: bounds, to: bitmap)
-
-        let image = NSImage(size: bounds.size)
-        image.addRepresentation(bitmap)
-        return image
-    }
-}
-
-@MainActor
-private final class MenuBarPanelAnimationWindow: NSPanel {
-    private static var activeWindows: [MenuBarPanelAnimationWindow] = []
-
-    override var canBecomeKey: Bool { false }
-    override var canBecomeMain: Bool { false }
-
-    static func closeAll() {
-        activeWindows.forEach { $0.close() }
-        activeWindows.removeAll()
-    }
-
-    init(image: NSImage, frame: NSRect) {
-        let imageView = NSImageView(frame: NSRect(origin: .zero, size: frame.size))
-        imageView.image = image
-        imageView.imageScaling = .scaleAxesIndependently
-        imageView.autoresizingMask = [.width, .height]
-        imageView.wantsLayer = true
-        imageView.layer?.magnificationFilter = .linear
-        imageView.layer?.minificationFilter = .linear
-
-        super.init(
-            contentRect: frame,
-            styleMask: [.borderless, .nonactivatingPanel],
-            backing: .buffered,
-            defer: false
-        )
-
-        contentView = imageView
-        isFloatingPanel = true
-        isReleasedWhenClosed = false
-        isOpaque = false
-        hasShadow = false
-        backgroundColor = .clear
-        ignoresMouseEvents = true
-        level = .popUpMenu
-        animationBehavior = .none
-        collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .transient]
-        Self.activeWindows.append(self)
-    }
-
-    override func close() {
-        super.close()
-        Self.activeWindows.removeAll { $0 === self }
+    private func materializedTransform() -> CATransform3D {
+        let offset = opensBelowStatusItem ? -Self.materializedYOffset : Self.materializedYOffset
+        var transform = CATransform3DIdentity
+        transform = CATransform3DTranslate(transform, 0, offset, 0)
+        transform = CATransform3DScale(transform, Self.materializedScale, Self.materializedScale, 1)
+        return transform
     }
 }
