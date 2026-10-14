@@ -8,10 +8,6 @@ private enum PopoverState {
     case opening
     case open
     case closing
-
-    var isTransitioning: Bool {
-        self == .opening || self == .closing
-    }
 }
 
 @MainActor
@@ -56,7 +52,7 @@ final class StatusBarController: NSObject {
     }
 
     @objc private func handleStatusItemClick(_ sender: NSStatusBarButton) {
-        guard !popoverState.isTransitioning else {
+        guard popoverState != .closing else {
             return
         }
 
@@ -130,11 +126,11 @@ final class StatusBarController: NSObject {
 
     private func togglePopover(from button: NSStatusBarButton) {
         switch popoverState {
-        case .open:
+        case .open, .opening:
             closePopover()
         case .closed:
             showPopover(from: button)
-        case .opening, .closing:
+        case .closing:
             break
         }
     }
@@ -192,7 +188,7 @@ final class StatusBarController: NSObject {
     }
 
     private func closePopover() {
-        guard popoverState == .open else {
+        guard popoverState == .open || popoverState == .opening else {
             return
         }
 
@@ -528,6 +524,7 @@ private final class MenuBarMonitorPanel: NSPanel {
     }
 
     func closeWithScaleAnimation(completion: @escaping @MainActor @Sendable () -> Void) {
+        resetContentLayerAfterAnimation()
         close()
         completion()
     }
@@ -584,6 +581,20 @@ private final class MenuBarMonitorPanel: NSPanel {
             }
         }
         layer.add(scaleAnimation, forKey: "gracedown.materialize.scale")
+        CATransaction.commit()
+    }
+
+    private func resetContentLayerAfterAnimation() {
+        guard let layer = contentView?.layer else {
+            return
+        }
+
+        layer.removeAnimation(forKey: "gracedown.materialize.scale")
+
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        layer.transform = CATransform3DIdentity
+        layer.opacity = 1
         CATransaction.commit()
     }
 
