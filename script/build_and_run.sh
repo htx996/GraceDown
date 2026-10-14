@@ -22,8 +22,10 @@ APP_UPDATER="$APP_MACOS/$UPDATER_PRODUCT_NAME"
 INFO_PLIST="$APP_CONTENTS/Info.plist"
 APP_ICON="$ROOT_DIR/Resources/AppIcon.icns"
 STATUS_BAR_ICON="$ROOT_DIR/Resources/StatusBarIconTemplate.png"
+DMG_BACKGROUND="$ROOT_DIR/Resources/InstallerBackground.png"
 DMG_ROOT="$DIST_DIR/dmg-root"
 DMG_PATH="$DIST_DIR/$APP_NAME-$APP_VERSION.dmg"
+DMG_RW_PATH="$DIST_DIR/$APP_NAME-$APP_VERSION-rw.dmg"
 DMG_CHECKSUM_PATH="$DMG_PATH.sha256"
 
 pkill -x "$APP_NAME" >/dev/null 2>&1 || true
@@ -91,10 +93,66 @@ codesign --force --deep --sign - "$APP_BUNDLE"
 
 create_dmg() {
   rm -rf "$DMG_ROOT"
+  rm -f "$DMG_PATH" "$DMG_RW_PATH" "$DMG_CHECKSUM_PATH"
   mkdir -p "$DMG_ROOT"
-  cp -R "$APP_BUNDLE" "$DMG_ROOT/$APP_NAME.app"
+  ditto "$APP_BUNDLE" "$DMG_ROOT/$APP_NAME.app"
   ln -s /Applications "$DMG_ROOT/Applications"
-  hdiutil create -volname "$APP_NAME" -srcfolder "$DMG_ROOT" -ov -format UDZO "$DMG_PATH"
+
+  if [[ -f "$DMG_BACKGROUND" ]]; then
+    mkdir -p "$DMG_ROOT/.background"
+    ditto "$DMG_BACKGROUND" "$DMG_ROOT/.background/InstallerBackground.png"
+
+    hdiutil create -volname "$APP_NAME" -srcfolder "$DMG_ROOT" -ov -format UDRW -fs HFS+ "$DMG_RW_PATH"
+
+    local mount_dir
+    mount_dir="$(mktemp -d /tmp/gracedown-dmg.XXXXXX)"
+    cleanup_dmg_mount() {
+      if [[ -n "${mount_dir:-}" && -d "$mount_dir" ]]; then
+        hdiutil detach "$mount_dir" >/dev/null 2>&1 || true
+        rmdir "$mount_dir" 2>/dev/null || true
+      fi
+    }
+    trap cleanup_dmg_mount RETURN
+
+    hdiutil attach "$DMG_RW_PATH" -readwrite -nobrowse -mountpoint "$mount_dir" >/dev/null
+    SetFile -a V "$mount_dir/.background" 2>/dev/null || true
+
+    osascript <<APPLESCRIPT
+tell application "Finder"
+  set dmgFolder to (POSIX file "$mount_dir") as alias
+  open dmgFolder
+  delay 1
+  set targetWindow to front window
+  set current view of targetWindow to icon view
+  set toolbar visible of targetWindow to false
+  set statusbar visible of targetWindow to false
+  set bounds of targetWindow to {120, 120, 1320, 880}
+  set theViewOptions to the icon view options of targetWindow
+  set icon size of theViewOptions to 160
+  set background picture of theViewOptions to (POSIX file "$mount_dir/.background/InstallerBackground.png") as alias
+  set position of item "$APP_NAME.app" of folder dmgFolder to {315, 360}
+  set position of item "Applications" of folder dmgFolder to {915, 360}
+  delay 1
+  close targetWindow
+end tell
+APPLESCRIPT
+
+    sync
+    for _ in 1 2 3; do
+      if hdiutil detach "$mount_dir" >/dev/null; then
+        break
+      fi
+      sleep 1
+    done
+    rmdir "$mount_dir" 2>/dev/null || true
+    trap - RETURN
+
+    hdiutil convert "$DMG_RW_PATH" -ov -format UDZO -imagekey zlib-level=9 -o "$DMG_PATH"
+    rm -f "$DMG_RW_PATH"
+  else
+    hdiutil create -volname "$APP_NAME" -srcfolder "$DMG_ROOT" -ov -format UDZO "$DMG_PATH"
+  fi
+
   shasum -a 256 "$DMG_PATH" > "$DMG_CHECKSUM_PATH"
 }
 
